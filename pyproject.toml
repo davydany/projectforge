@@ -1,0 +1,11 @@
+[project]
+name = "projectforge"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "plotly>=6.0.0",
+    "streamlit>=1.43.2",
+    "watchdog>=6.0.0",
+]
