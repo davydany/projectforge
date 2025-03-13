@@ -5,12 +5,11 @@ import pandas as pd
 import plotly.express as px
 
 # Import pages
-import pages.projects
-import pages.tasks
 import pages.notes
 import pages.reminders
 import pages.dashboard
 import pages.teams_members
+import pages.projects_tasks
 import utils.database as db
 
 # Initialize the database
@@ -31,8 +30,7 @@ st.sidebar.image("https://img.icons8.com/color/96/000000/project-management.png"
 pages = {
     "Dashboard": pages.dashboard,
     "Teams & Members": pages.teams_members,
-    "Projects": pages.projects,
-    "Tasks": pages.tasks,
+    "Projects & Tasks": pages.projects_tasks,
     "Notes": pages.notes,
     "Reminders": pages.reminders,
 }
