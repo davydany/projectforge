@@ -5,9 +5,49 @@ import utils.database as db
 def app():
     st.header("Project Management")
     
-    tabs = st.tabs(["Add Project", "Add Sub-Project", "View Projects"])
+    # Display existing projects first
+    st.subheader("Projects")
+    projects = db.execute_query("""
+        SELECT p.id, p.name, p.description, p.start_date, p.end_date, 
+               CASE WHEN p.assigned_to IS NULL 
+                    THEN 'Unassigned' 
+                    ELSE tm.first_name || ' ' || tm.last_name 
+               END as assigned_to
+        FROM projects p
+        LEFT JOIN team_members tm ON p.assigned_to = tm.id
+    """)
     
-    with tabs[0]:
+    if projects:
+        for project in projects:
+            with st.expander(f"{project[1]}"):
+                st.write(f"**Description:** {project[2]}")
+                st.write(f"**Timeline:** {project[3]} to {project[4]}")
+                st.write(f"**Assigned to:** {project[5]}")
+                
+                # Get sub-projects
+                sub_projects = db.execute_query(
+                    """SELECT sp.name, sp.start_date, sp.end_date, 
+                              CASE WHEN sp.assigned_to IS NULL 
+                                   THEN 'Unassigned' 
+                                   ELSE tm.first_name || ' ' || tm.last_name 
+                              END as assigned_to
+                       FROM sub_projects sp
+                       LEFT JOIN team_members tm ON sp.assigned_to = tm.id
+                       WHERE sp.project_id = ?""", 
+                    (project[0],)
+                )
+                
+                if sub_projects:
+                    st.write("**Sub-Projects:**")
+                    for sub in sub_projects:
+                        st.write(f"- {sub[0]} ({sub[1]} to {sub[2]}, assigned to {sub[3]})")
+                else:
+                    st.write("No sub-projects yet.")
+    else:
+        st.info("No projects added yet.")
+    
+    # Add project form in an expander
+    with st.expander("➕ Add New Project", expanded=False):
         st.subheader("Add New Project")
         name = st.text_input("Project Name")
         description = st.text_area("Description")
@@ -33,8 +73,10 @@ def app():
                 (name, description, start_date.isoformat(), end_date.isoformat(), assigned_to)
             )
             st.success("Project added successfully!")
+            st.rerun()  # Refresh the page to show the new project
     
-    with tabs[1]:
+    # Add sub-project form in an expander
+    with st.expander("➕ Add New Sub-Project", expanded=False):
         st.subheader("Add New Sub-Project")
         projects = db.get_projects()
         
@@ -69,46 +111,6 @@ def app():
                      end_date.isoformat(), assigned_to)
                 )
                 st.success("Sub-Project added successfully!")
+                st.rerun()  # Refresh the page to show the new sub-project
         else:
-            st.warning("Please add a project first before adding sub-projects.")
-    
-    with tabs[2]:
-        st.subheader("Project Overview")
-        projects = db.execute_query("""
-            SELECT p.id, p.name, p.description, p.start_date, p.end_date, 
-                   CASE WHEN p.assigned_to IS NULL 
-                        THEN 'Unassigned' 
-                        ELSE tm.first_name || ' ' || tm.last_name 
-                   END as assigned_to
-            FROM projects p
-            LEFT JOIN team_members tm ON p.assigned_to = tm.id
-        """)
-        
-        if projects:
-            for project in projects:
-                with st.expander(f"{project[1]}"):
-                    st.write(f"**Description:** {project[2]}")
-                    st.write(f"**Timeline:** {project[3]} to {project[4]}")
-                    st.write(f"**Assigned to:** {project[5]}")
-                    
-                    # Get sub-projects
-                    sub_projects = db.execute_query(
-                        """SELECT sp.name, sp.start_date, sp.end_date, 
-                                  CASE WHEN sp.assigned_to IS NULL 
-                                       THEN 'Unassigned' 
-                                       ELSE tm.first_name || ' ' || tm.last_name 
-                                  END as assigned_to
-                           FROM sub_projects sp
-                           LEFT JOIN team_members tm ON sp.assigned_to = tm.id
-                           WHERE sp.project_id = ?""", 
-                        (project[0],)
-                    )
-                    
-                    if sub_projects:
-                        st.write("**Sub-Projects:**")
-                        for sub in sub_projects:
-                            st.write(f"- {sub[0]} ({sub[1]} to {sub[2]}, assigned to {sub[3]})")
-                    else:
-                        st.write("No sub-projects yet.")
-        else:
-            st.info("No projects added yet.") 
+            st.warning("Please add a project first before adding sub-projects.") 

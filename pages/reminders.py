@@ -5,9 +5,50 @@ import utils.database as db
 def app():
     st.header("Task Reminders")
     
-    tabs = st.tabs(["Add Reminder", "View Reminders"])
+    # Display reminders
+    st.subheader("Reminders")
     
-    with tabs[0]:
+    # Filter options
+    show_all = st.checkbox("Show all reminders (including followed up)")
+    
+    if show_all:
+        query = """
+            SELECT r.id, t.name, r.reminder_date, r.note, r.followed_up
+            FROM reminders r
+            JOIN tasks t ON r.task_id = t.id
+            ORDER BY r.reminder_date
+        """
+        reminders = db.execute_query(query)
+    else:
+        today = date.today().isoformat()
+        query = """
+            SELECT r.id, t.name, r.reminder_date, r.note, r.followed_up
+            FROM reminders r
+            JOIN tasks t ON r.task_id = t.id
+            WHERE r.reminder_date <= ? AND r.followed_up = 0
+            ORDER BY r.reminder_date
+        """
+        reminders = db.execute_query(query, (today,))
+    
+    if reminders:
+        for rem in reminders:
+            with st.expander(f"{rem[1]} - Due: {rem[2]}"):
+                st.write(f"**Note:** {rem[3]}")
+                st.write(f"**Status:** {'Followed up' if rem[4] else 'Needs attention'}")
+                
+                if not rem[4]:  # If not followed up
+                    if st.button(f"Mark as Followed Up", key=f"followup_{rem[0]}"):
+                        db.execute_query(
+                            "UPDATE reminders SET followed_up = 1 WHERE id = ?", 
+                            (rem[0],)
+                        )
+                        st.success("Marked as followed up!")
+                        st.rerun()
+    else:
+        st.info("No reminders found.")
+    
+    # Add reminder form in an expander
+    with st.expander("➕ Add New Reminder", expanded=False):
         st.subheader("Add Reminder to Task")
         tasks = db.get_tasks()
         
@@ -23,47 +64,6 @@ def app():
                     (task_dict[task], reminder_date.isoformat(), note)
                 )
                 st.success("Reminder added successfully!")
+                st.rerun()  # Refresh the page to show the new reminder
         else:
-            st.warning("Please add tasks first before adding reminders.")
-    
-    with tabs[1]:
-        st.subheader("Reminders Overview")
-        
-        # Filter options
-        show_all = st.checkbox("Show all reminders (including followed up)")
-        
-        if show_all:
-            query = """
-                SELECT r.id, t.name, r.reminder_date, r.note, r.followed_up
-                FROM reminders r
-                JOIN tasks t ON r.task_id = t.id
-                ORDER BY r.reminder_date
-            """
-            reminders = db.execute_query(query)
-        else:
-            today = date.today().isoformat()
-            query = """
-                SELECT r.id, t.name, r.reminder_date, r.note, r.followed_up
-                FROM reminders r
-                JOIN tasks t ON r.task_id = t.id
-                WHERE r.reminder_date <= ? AND r.followed_up = 0
-                ORDER BY r.reminder_date
-            """
-            reminders = db.execute_query(query, (today,))
-        
-        if reminders:
-            for rem in reminders:
-                with st.expander(f"{rem[1]} - Due: {rem[2]}"):
-                    st.write(f"**Note:** {rem[3]}")
-                    st.write(f"**Status:** {'Followed up' if rem[4] else 'Needs attention'}")
-                    
-                    if not rem[4]:  # If not followed up
-                        if st.button(f"Mark as Followed Up", key=f"followup_{rem[0]}"):
-                            db.execute_query(
-                                "UPDATE reminders SET followed_up = 1 WHERE id = ?", 
-                                (rem[0],)
-                            )
-                            st.success("Marked as followed up!")
-                            st.rerun()
-        else:
-            st.info("No reminders found.") 
+            st.warning("Please add tasks first before adding reminders.") 
