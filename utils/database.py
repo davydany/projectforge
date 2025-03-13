@@ -1,8 +1,15 @@
 import sqlite3
 from datetime import datetime
+import os
+
+# Ensure data directory exists
+os.makedirs('data', exist_ok=True)
+
+# Use a path that will be mounted as a volume
+DB_PATH = 'data/projectforge.db'
 
 # Database connection
-conn = sqlite3.connect('project_management.db', check_same_thread=False)
+conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 c = conn.cursor()
 
 def init_db():
@@ -99,6 +106,7 @@ def init_db():
         )
     ''')
     conn.commit()
+    conn.close()
 
 # Helper Functions
 def get_teams():
@@ -121,13 +129,24 @@ def get_tasks():
     c.execute("SELECT id, name FROM tasks")
     return c.fetchall()
 
-def execute_query(query, params=None):
+def execute_query(query, params=None, fetch_last_id=False):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
     if params:
-        c.execute(query, params)
+        cursor.execute(query, params)
     else:
-        c.execute(query)
+        cursor.execute(query)
+    
+    if fetch_last_id:
+        cursor.execute("SELECT last_insert_rowid()")
+        result = cursor.fetchone()[0]
+    else:
+        result = cursor.fetchall()
+    
     conn.commit()
-    return c.fetchall()
+    conn.close()
+    return result
 
 # Add a function to log activities
 def log_activity(action_type, entity_type, entity_id, entity_name, description, project_id=None, user_id=None):
@@ -143,7 +162,7 @@ def log_activity(action_type, entity_type, entity_id, entity_name, description, 
     - project_id: ID of the project this activity belongs to (can be None)
     - user_id: ID of the user who performed the action (can be None)
     """
-    conn = sqlite3.connect('project_management.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     cursor.execute(
@@ -159,7 +178,7 @@ def log_activity(action_type, entity_type, entity_id, entity_name, description, 
 # Function to get activity logs for a project
 def get_project_activity_logs(project_id, limit=50):
     """Get recent activity logs for a specific project"""
-    conn = sqlite3.connect('project_management.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     cursor.execute(
@@ -179,7 +198,7 @@ def get_project_activity_logs(project_id, limit=50):
 # Function to get all recent activity logs
 def get_recent_activity_logs(limit=50):
     """Get recent activity logs across all projects"""
-    conn = sqlite3.connect('project_management.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     cursor.execute(
