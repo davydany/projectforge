@@ -140,26 +140,81 @@ def app():
     all_members = db.execute_query("SELECT id, first_name || ' ' || last_name as name FROM team_members")
     member_map = {id: name for id, name in all_members}
 
-    # Get task progress data
-    progress_data = db.execute_query("SELECT assigned_to, status, COUNT(*) FROM tasks GROUP BY assigned_to, status")
+    # Get task progress data with more detailed query
+    progress_data = db.execute_query("""
+        SELECT 
+            t.assigned_to, 
+            t.status, 
+            COUNT(*) as task_count,
+            GROUP_CONCAT(t.name, ', ') as task_names
+        FROM tasks t
+        GROUP BY t.assigned_to, t.status
+    """)
 
     # Initialize progress dictionary with all members
     progress = {}
     for member_id, name in all_members:
-        progress[member_id] = {"name": name, "total": 0, "completed": 0}
+        progress[member_id] = {
+            "name": name, 
+            "total": 0, 
+            "completed": 0,
+            "tasks": {
+                "not started": [],
+                "started": [],
+                "in progress": [],
+                "blocked": [],
+                "waiting": [],
+                "completed": []
+            }
+        }
 
     # Add "Unassigned" category
-    progress[None] = {"name": "Unassigned", "total": 0, "completed": 0}
+    progress[None] = {
+        "name": "Unassigned", 
+        "total": 0, 
+        "completed": 0,
+        "tasks": {
+            "not started": [],
+            "started": [],
+            "in progress": [],
+            "blocked": [],
+            "waiting": [],
+            "completed": []
+        }
+    }
 
     # Fill in task data
-    for member_id, status, count in progress_data:
+    for member_id, status, count, task_names in progress_data:
         if member_id not in progress:
             # This shouldn't happen, but just in case
-            progress[member_id] = {"name": member_map.get(member_id, "Unknown"), "total": 0, "completed": 0}
+            progress[member_id] = {
+                "name": member_map.get(member_id, "Unknown"), 
+                "total": 0, 
+                "completed": 0,
+                "tasks": {
+                    "not started": [],
+                    "started": [],
+                    "in progress": [],
+                    "blocked": [],
+                    "waiting": [],
+                    "completed": []
+                }
+            }
         
+        # Add to total count
         progress[member_id]["total"] += count
+        
+        # Add to completed count if status is completed
         if status == "completed":
             progress[member_id]["completed"] += count
+        
+        # Add task names to the appropriate status list
+        if task_names:
+            status_key = status.lower() if status else "not started"
+            if status_key not in progress[member_id]["tasks"]:
+                progress[member_id]["tasks"][status_key] = []
+            
+            progress[member_id]["tasks"][status_key].extend(task_names.split(", "))
 
     # Display progress for all members
     for member_id, data in progress.items():
@@ -167,15 +222,94 @@ def app():
         total = data["total"]
         completed = data["completed"]
         
-        st.write(f"**{name}**")
-        
-        if total > 0:
-            pct = (completed / total) * 100
-            st.progress(int(pct))
-            st.write(f"{pct:.1f}% completed ({completed}/{total} tasks)")
-        else:
-            st.progress(0)
-            st.write("No tasks assigned")
+        # Create an expander for each team member
+        with st.expander(f"**{name}** - {completed}/{total} tasks", expanded=False):
+            if total > 0:
+                # Calculate percentage
+                pct = (completed / total) * 100
+                
+                # Show progress bar
+                st.progress(int(pct))
+                st.write(f"{pct:.1f}% completed")
+                
+                # Get all tasks for this member with more details
+                member_tasks = db.execute_query("""
+                    SELECT 
+                        t.id, 
+                        t.name, 
+                        t.description, 
+                        t.status,
+                        p.name as project_name,
+                        sp.name as subproject_name,
+                        t.jira_ticket
+                    FROM tasks t
+                    LEFT JOIN projects p ON t.project_id = p.id
+                    LEFT JOIN sub_projects sp ON t.sub_project_id = sp.id
+                    WHERE t.assigned_to = ?
+                    ORDER BY 
+                        CASE 
+                            WHEN t.status = 'completed' THEN 2
+                            ELSE 1
+                        END,
+                        p.name, 
+                        sp.name
+                """, (member_id,))
+                
+                if member_tasks:
+                    # Create a formatted HTML table
+                    table_html = """
+                    <table style="width:100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background-color: #f2f2f2;">
+                                <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">Task</th>
+                                <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">Project</th>
+                                <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">Sub-Project</th>
+                                <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">Status</th>
+                                <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">Jira</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                    """
+                    
+                    for task in member_tasks:
+                        task_id, task_name, task_desc, task_status, project_name, subproject_name, jira_ticket = task
+                        
+                        # Set row color based on status
+                        row_color = "#e6ffe6" if task_status == "completed" else \
+                                    "#ffcccc" if task_status == "blocked" else \
+                                    "#ffe6cc" if task_status == "waiting" else \
+                                    "#e6f7ff" if task_status == "in progress" else \
+                                    "#f9f9f9"  # default
+                        
+                        # Format the task description (truncate if too long)
+                        task_desc_short = (task_desc[:50] + '...') if task_desc and len(task_desc) > 50 else task_desc
+                        
+                        # Add tooltip with full description
+                        tooltip = f'title="{task_desc}"' if task_desc else ''
+                        
+                        # Add row to table
+                        table_html += f"""
+                        <tr style="background-color: {row_color};">
+                            <td style="padding: 8px; text-align: left; border: 1px solid #ddd;" {tooltip}>{task_name}</td>
+                            <td style="padding: 8px; text-align: left; border: 1px solid #ddd;">{project_name or '-'}</td>
+                            <td style="padding: 8px; text-align: left; border: 1px solid #ddd;">{subproject_name or '-'}</td>
+                            <td style="padding: 8px; text-align: left; border: 1px solid #ddd;">{task_status or 'Not started'}</td>
+                            <td style="padding: 8px; text-align: left; border: 1px solid #ddd;">{jira_ticket or '-'}</td>
+                        </tr>
+                        """
+                    
+                    table_html += """
+                        </tbody>
+                    </table>
+                    """
+                    
+                    # Display the table
+                    st.markdown(table_html, unsafe_allow_html=True)
+                else:
+                    st.info("No detailed task information available.")
+            else:
+                st.progress(0)
+                st.write("No tasks assigned")
         
         st.write("---")
     
