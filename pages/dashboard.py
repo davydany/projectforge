@@ -235,13 +235,12 @@ def app():
                 # Get all tasks for this member with more details
                 member_tasks = db.execute_query("""
                     SELECT 
-                        t.id, 
-                        t.name, 
-                        t.description, 
-                        t.status,
-                        p.name as project_name,
-                        sp.name as subproject_name,
-                        t.jira_ticket
+                        t.name as 'Task', 
+                        p.name as 'Project',
+                        sp.name as 'Sub-Project',
+                        t.status as 'Status',
+                        t.jira_ticket as 'Jira',
+                        t.description as 'Description'
                     FROM tasks t
                     LEFT JOIN projects p ON t.project_id = p.id
                     LEFT JOIN sub_projects sp ON t.sub_project_id = sp.id
@@ -256,55 +255,33 @@ def app():
                 """, (member_id,))
                 
                 if member_tasks:
-                    # Create a formatted HTML table
-                    table_html = """
-                    <table style="width:100%; border-collapse: collapse;">
-                        <thead>
-                            <tr style="background-color: #f2f2f2;">
-                                <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">Task</th>
-                                <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">Project</th>
-                                <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">Sub-Project</th>
-                                <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">Status</th>
-                                <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">Jira</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                    """
+                    # Convert to DataFrame
+                    df_columns = ['Task', 'Project', 'Sub-Project', 'Status', 'Jira', 'Description']
+                    df = pd.DataFrame(member_tasks, columns=df_columns)
                     
-                    for task in member_tasks:
-                        task_id, task_name, task_desc, task_status, project_name, subproject_name, jira_ticket = task
-                        
-                        # Set row color based on status
-                        row_color = "#e6ffe6" if task_status == "completed" else \
-                                    "#ffcccc" if task_status == "blocked" else \
-                                    "#ffe6cc" if task_status == "waiting" else \
-                                    "#e6f7ff" if task_status == "in progress" else \
-                                    "#f9f9f9"  # default
-                        
-                        # Format the task description (truncate if too long)
-                        task_desc_short = (task_desc[:50] + '...') if task_desc and len(task_desc) > 50 else task_desc
-                        
-                        # Add tooltip with full description
-                        tooltip = f'title="{task_desc}"' if task_desc else ''
-                        
-                        # Add row to table
-                        table_html += f"""
-                        <tr style="background-color: {row_color};">
-                            <td style="padding: 8px; text-align: left; border: 1px solid #ddd;" {tooltip}>{task_name}</td>
-                            <td style="padding: 8px; text-align: left; border: 1px solid #ddd;">{project_name or '-'}</td>
-                            <td style="padding: 8px; text-align: left; border: 1px solid #ddd;">{subproject_name or '-'}</td>
-                            <td style="padding: 8px; text-align: left; border: 1px solid #ddd;">{task_status or 'Not started'}</td>
-                            <td style="padding: 8px; text-align: left; border: 1px solid #ddd;">{jira_ticket or '-'}</td>
-                        </tr>
-                        """
+                    # Replace None values with '-'
+                    df = df.fillna('-')
                     
-                    table_html += """
-                        </tbody>
-                    </table>
-                    """
+                    # Truncate long descriptions
+                    df['Description'] = df['Description'].apply(lambda x: (x[:50] + '...') if len(x) > 50 else x)
                     
-                    # Display the table
-                    st.markdown(table_html, unsafe_allow_html=True)
+                    # Apply styling to the dataframe
+                    def highlight_status(val):
+                        if val == 'completed':
+                            return 'background-color: #e6ffe6'
+                        elif val == 'blocked':
+                            return 'background-color: #ffcccc'
+                        elif val == 'waiting':
+                            return 'background-color: #ffe6cc'
+                        elif val == 'in progress':
+                            return 'background-color: #e6f7ff'
+                        return ''
+                    
+                    # Apply the styling
+                    styled_df = df.style.applymap(highlight_status, subset=['Status'])
+                    
+                    # Display the DataFrame
+                    st.dataframe(styled_df, use_container_width=True)
                 else:
                     st.info("No detailed task information available.")
             else:

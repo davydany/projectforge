@@ -296,192 +296,292 @@ def app():
         
         # Tasks Tab
         with tab1:
-            st.subheader("Project Tasks")
-            
             # Get tasks for this project
             tasks = db.execute_query("""
-                SELECT t.id, t.name, t.description, t.jira_ticket, t.status, t.assigned_to
+                SELECT t.id, t.name, t.description, t.status, t.jira_ticket, t.assigned_to
                 FROM tasks t
                 WHERE t.project_id = ? AND t.sub_project_id IS NULL
+                ORDER BY 
+                    CASE 
+                        WHEN t.status = 'completed' THEN 2
+                        ELSE 1
+                    END,
+                    t.name
             """, (project_id,))
             
+            # Add task form
+            with st.expander("Add New Task", expanded=False):
+                with st.form("add_task_form"):
+                    task_name = st.text_input("Task Name")
+                    task_description = st.text_area("Description")
+                    task_jira = st.text_input("Jira Ticket (optional)")
+                    task_status = st.selectbox("Status", ["not started", "started", "in progress", "blocked", "waiting", "completed"])
+                    task_assigned = st.selectbox("Assigned To", member_options)
+                    
+                    submitted = st.form_submit_button("Add Task")
+                    if submitted and task_name:
+                        # Convert "Unassigned" to None
+                        assigned_id = None
+                        if task_assigned != "Unassigned":
+                            for m_id, m_name in members:
+                                if m_name == task_assigned:
+                                    assigned_id = m_id
+                                    break
+                        
+                        # Insert the task
+                        db.execute_query(
+                            "INSERT INTO tasks (project_id, name, description, jira_ticket, status, assigned_to) VALUES (?, ?, ?, ?, ?, ?)",
+                            (project_id, task_name, task_description, task_jira, task_status, assigned_id)
+                        )
+                        
+                        # Log the activity
+                        task_id = db.execute_query("SELECT last_insert_rowid()", fetch_last_id=True)
+                        db.log_activity(
+                            action_type="create",
+                            entity_type="task",
+                            entity_id=task_id,
+                            entity_name=task_name,
+                            description=f"Created new task: {task_name}",
+                            project_id=project_id
+                        )
+                        
+                        st.success(f"Task '{task_name}' added successfully!")
+                        st.rerun()
+            
+            # Display tasks
+            st.subheader("Tasks")
+            
             if tasks:
-                # Convert to DataFrame for the editable table
-                tasks_df = pd.DataFrame(tasks, 
-                                      columns=["ID", "Name", "Description", "Jira Ticket", "Status", "Assigned To"])
+                # Create a container for tasks
+                tasks_container = st.container()
                 
-                # Add assigned person name
-                tasks_df["Assigned To Name"] = tasks_df["Assigned To"].apply(
-                    lambda x: member_dict.get(x, "Unassigned") if x else "Unassigned"
-                )
-                
-                # Add action buttons
-                tasks_df["Delete"] = False
-                tasks_df["Change Status"] = tasks_df["Status"]
-                
-                # Create an editable dataframe for tasks
-                edited_tasks_df = st.data_editor(
-                    tasks_df,
-                    column_config={
-                        "ID": st.column_config.NumberColumn("ID", disabled=True),
-                        "Name": st.column_config.TextColumn("Name"),
-                        "Description": st.column_config.TextColumn("Description"),
-                        "Jira Ticket": st.column_config.TextColumn("Jira Ticket"),
-                        "Status": st.column_config.TextColumn("Current Status", disabled=True),
-                        "Change Status": st.column_config.SelectboxColumn(
-                            "Change Status",
-                            options=["not started", "started", "blocked", "waiting", "in progress", "completed"],
-                            required=True
-                        ),
-                        "Assigned To": st.column_config.NumberColumn("Assigned To ID", disabled=True),
-                        "Assigned To Name": st.column_config.SelectboxColumn(
-                            "Assigned To",
-                            options=member_options,
-                            required=True
-                        ),
-                        "Delete": st.column_config.CheckboxColumn("Delete?", help="Select to delete this task")
-                    },
-                    hide_index=True,
-                    num_rows="dynamic",
-                    key=f"tasks_df_{project_id}"
-                )
-                
-                # Add action buttons for each task
-                for index, row in tasks_df.iterrows():
-                    task_id = row["ID"]
-                    task_name = row["Name"]
-                    col1, col2 = st.columns(2)
-                    with col1:
+                with tasks_container:
+                    for task_id, task_name, task_description, task_status, task_jira, task_assigned_to in tasks:
+                        # Get assigned person name
+                        assigned_name = "Unassigned"
+                        if task_assigned_to:
+                            for m_id, m_name in members:
+                                if m_id == task_assigned_to:
+                                    assigned_name = m_name
+                                    break
+                        
+                        # Set background color based on status
+                        status_colors = {
+                            "completed": "#e6ffe6",
+                            "blocked": "#ffcccc",
+                            "waiting": "#ffe6cc",
+                            "in progress": "#e6f7ff",
+                            "started": "#f0f0f0",
+                            "not started": "#f9f9f9"
+                        }
+                        bg_color = status_colors.get(task_status, "#f9f9f9")
+                        
+                        # Create a container for each task
                         with st.container(border=True):
-                            st.markdown(f"**{task_name}**")
-                            st.markdown(f"**{row['Description'][:100]}...**")
-                    with col2:
-                        if st.button("📝 Add Note", key=f"note_btn_{task_id}", use_container_width=True):
-                            open_note_modal(task_id, task_name)
-                        if st.button("🔔 Add Reminder", key=f"reminder_btn_{task_id}", use_container_width=True):
-                            open_reminder_modal(task_id, task_name)
-                    st.markdown("---")
-                
-                # Handle task deletions
-                for index, row in edited_tasks_df.iterrows():
-                    if row["Delete"] and index < len(tasks_df):
-                        # Check if task has notes or reminders
-                        note_count = db.execute_query(
-                            "SELECT COUNT(*) FROM notes WHERE task_id = ?", 
-                            (row["ID"],)
-                        )[0][0]
-                        
-                        reminder_count = db.execute_query(
-                            "SELECT COUNT(*) FROM reminders WHERE task_id = ?", 
-                            (row["ID"],)
-                        )[0][0]
-                        
-                        if note_count > 0 or reminder_count > 0:
-                            st.error(f"Cannot delete task '{row['Name']}' with notes or reminders. Please delete them first.")
-                        else:
-                            db.execute_query("DELETE FROM tasks WHERE id = ?", (row["ID"],))
-                            st.success(f"Task '{row['Name']}' deleted successfully!")
-                            st.rerun()
-                
-                # Handle task updates
-                for index, row in edited_tasks_df.iterrows():
-                    if index < len(tasks_df):  # This is an edit to existing row
-                        # Check for status changes
-                        if row["Status"] != row["Change Status"]:
-                            db.execute_query(
-                                "UPDATE tasks SET status = ? WHERE id = ?",
-                                (row["Change Status"], row["ID"])
-                            )
-                            st.success(f"Updated status for task '{row['Name']}' to {row['Change Status']}")
-                            st.rerun()
-                        
-                        # Check for assigned person changes
-                        current_assigned = tasks_df.iloc[index]["Assigned To Name"]
-                        if row["Assigned To Name"] != current_assigned:
-                            # Find member_id from name
-                            assigned_to = None
-                            if row["Assigned To Name"] != "Unassigned":
-                                assigned_to = next((id for id, name in member_dict.items() if name == row["Assigned To Name"]), None)
+                            col1, col2 = st.columns([3, 1])
                             
-                            db.execute_query(
-                                "UPDATE tasks SET assigned_to = ? WHERE id = ?",
-                                (assigned_to, row["ID"])
-                            )
-                            st.success(f"Reassigned task '{row['Name']}' to {row['Assigned To Name']}")
-                            st.rerun()
-                        
-                        # Check for other changes
-                        if not tasks_df.iloc[index][["Name", "Description", "Jira Ticket"]].equals(
-                            row[["Name", "Description", "Jira Ticket"]]
-                        ):
+                            with col1:
+                                # Task details
+                                st.markdown(f"### {task_name}")
+                                
+                                # Status badge
+                                status_badge = f"""
+                                <span style="background-color: {bg_color}; 
+                                             padding: 3px 8px; 
+                                             border-radius: 10px; 
+                                             font-size: 0.8em;
+                                             border: 1px solid #ddd;">
+                                    {task_status.upper()}
+                                </span>
+                                """
+                                st.markdown(status_badge, unsafe_allow_html=True)
+                                
+                                if task_description:
+                                    st.markdown(f"**Description:** {task_description}")
+                                
+                                if task_jira:
+                                    st.markdown(f"**Jira:** {task_jira}")
+                                
+                                st.markdown(f"**Assigned to:** {assigned_name}")
+                            
+                            with col2:
+                                # Action buttons
+                                button_cols = st.columns(2)
+                                
+                                # Edit Task button
+                                with button_cols[0]:
+                                    if st.button("✏️ Edit", key=f"edit_btn_{task_id}", use_container_width=True):
+                                        # Store task ID for dialog
+                                        st.session_state.edit_task_id = task_id
+                                        st.session_state.edit_task_name = task_name
+                                        st.session_state.edit_task_description = task_description
+                                        st.session_state.edit_task_jira = task_jira
+                                        st.session_state.edit_task_status = task_status
+                                        st.session_state.edit_task_assigned = assigned_name
+                                        st.rerun()
+                                
+                                # Complete/Reopen button
+                                with button_cols[1]:
+                                    if task_status != "completed":
+                                        if st.button("✅ Complete", key=f"complete_btn_{task_id}", use_container_width=True):
+                                            db.execute_query(
+                                                "UPDATE tasks SET status = 'completed' WHERE id = ?",
+                                                (task_id,)
+                                            )
+                                            
+                                            # Log the activity
+                                            db.log_activity(
+                                                action_type="update",
+                                                entity_type="task",
+                                                entity_id=task_id,
+                                                entity_name=task_name,
+                                                description=f"Marked task as completed: {task_name}",
+                                                project_id=project_id
+                                            )
+                                            
+                                            st.success(f"Task '{task_name}' marked as completed!")
+                                            st.rerun()
+                                    else:
+                                        if st.button("🔄 Reopen", key=f"reopen_btn_{task_id}", use_container_width=True):
+                                            db.execute_query(
+                                                "UPDATE tasks SET status = 'in progress' WHERE id = ?",
+                                                (task_id,)
+                                            )
+                                            
+                                            # Log the activity
+                                            db.log_activity(
+                                                action_type="update",
+                                                entity_type="task",
+                                                entity_id=task_id,
+                                                entity_name=task_name,
+                                                description=f"Reopened task: {task_name}",
+                                                project_id=project_id
+                                            )
+                                            
+                                            st.success(f"Task '{task_name}' reopened!")
+                                            st.rerun()
+                                
+                                # Notes and Reminders buttons
+                                button_cols = st.columns(2)
+                                with button_cols[0]:
+                                    if st.button("📝 Add Note", key=f"note_btn_{task_id}", use_container_width=True):
+                                        open_note_modal(task_id, task_name)
+                                
+                                with button_cols[1]:
+                                    if st.button("🔔 Add Reminder", key=f"reminder_btn_{task_id}", use_container_width=True):
+                                        open_reminder_modal(task_id, task_name)
+                                
+                                # Delete button
+                                if st.button("🗑️ Delete", key=f"delete_btn_{task_id}", use_container_width=True):
+                                    # Confirm deletion
+                                    st.session_state.delete_task_id = task_id
+                                    st.session_state.delete_task_name = task_name
+                                    st.rerun()
+            else:
+                st.info("No tasks for this project yet. Add a task to get started.")
+
+        # Edit Task Dialog
+        if hasattr(st.session_state, 'edit_task_id') and st.session_state.edit_task_id:
+            @st.dialog("Edit Task")
+            def edit_task_dialog():
+                task_id = st.session_state.edit_task_id
+                
+                st.subheader(f"Edit Task: {st.session_state.edit_task_name}")
+                
+                # Form for editing task
+                task_name = st.text_input("Task Name", value=st.session_state.edit_task_name)
+                task_description = st.text_area("Description", value=st.session_state.edit_task_description)
+                task_jira = st.text_input("Jira Ticket", value=st.session_state.edit_task_jira if st.session_state.edit_task_jira else "")
+                task_status = st.selectbox("Status", 
+                                          ["not started", "started", "in progress", "blocked", "waiting", "completed"],
+                                          index=["not started", "started", "in progress", "blocked", "waiting", "completed"].index(st.session_state.edit_task_status))
+                task_assigned = st.selectbox("Assigned To", member_options, 
+                                            index=member_options.index(st.session_state.edit_task_assigned))
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("Cancel", use_container_width=True):
+                        # Clear session state
+                        st.session_state.edit_task_id = None
+                        st.rerun()
+                
+                with col2:
+                    if st.button("Save Changes", use_container_width=True):
+                        if task_name:
+                            # Convert "Unassigned" to None
+                            assigned_id = None
+                            if task_assigned != "Unassigned":
+                                for m_id, m_name in members:
+                                    if m_name == task_assigned:
+                                        assigned_id = m_id
+                                        break
+                            
+                            # Update the task
                             db.execute_query(
                                 """UPDATE tasks 
-                                   SET name = ?, description = ?, jira_ticket = ?
+                                   SET name = ?, description = ?, jira_ticket = ?, status = ?, assigned_to = ?
                                    WHERE id = ?""",
-                                (row["Name"], row["Description"], row["Jira Ticket"], row["ID"])
+                                (task_name, task_description, task_jira, task_status, assigned_id, task_id)
                             )
-                            st.success(f"Updated task: {row['Name']}")
-                            st.rerun()
-                    else:  # This is a new row
-                        if not pd.isna(row["Name"]):
-                            # Find member_id from name
-                            assigned_to = None
-                            if not pd.isna(row["Assigned To Name"]) and row["Assigned To Name"] != "Unassigned":
-                                assigned_to = next((id for id, name in member_dict.items() if name == row["Assigned To Name"]), None)
                             
-                            db.execute_query(
-                                """INSERT INTO tasks 
-                                   (project_id, sub_project_id, name, description, jira_ticket, status, assigned_to)
-                                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                                (project_id, None, row["Name"], row["Description"] or "", row["Jira Ticket"] or "", 
-                                 row["Change Status"], assigned_to)
+                            # Log the activity
+                            db.log_activity(
+                                action_type="update",
+                                entity_type="task",
+                                entity_id=task_id,
+                                entity_name=task_name,
+                                description=f"Updated task: {task_name}",
+                                project_id=project_id
                             )
-                            st.success(f"Added new task: {row['Name']}")
+                            
+                            st.success(f"Task '{task_name}' updated successfully!")
+                            
+                            # Clear session state
+                            st.session_state.edit_task_id = None
                             st.rerun()
-            else:
-                st.info(f"No tasks for project {project_name} yet.")
+            
+            # Call the dialog function
+            edit_task_dialog()
+
+        # Delete Task Confirmation
+        if hasattr(st.session_state, 'delete_task_id') and st.session_state.delete_task_id:
+            @st.dialog("Confirm Deletion")
+            def delete_task_dialog():
+                task_id = st.session_state.delete_task_id
+                task_name = st.session_state.delete_task_name
                 
-                # Show an empty table with structure for adding new tasks
-                empty_tasks_df = pd.DataFrame(columns=["Name", "Description", "Jira Ticket", "Change Status", "Assigned To Name"])
-                edited_empty_df = st.data_editor(
-                    empty_tasks_df,
-                    column_config={
-                        "Name": st.column_config.TextColumn("Name"),
-                        "Description": st.column_config.TextColumn("Description"),
-                        "Jira Ticket": st.column_config.TextColumn("Jira Ticket"),
-                        "Change Status": st.column_config.SelectboxColumn(
-                            "Status",
-                            options=["not started", "started", "blocked", "waiting", "in progress", "completed"],
-                            required=True
-                        ),
-                        "Assigned To Name": st.column_config.SelectboxColumn(
-                            "Assigned To",
-                            options=member_options,
-                            required=True
-                        )
-                    },
-                    num_rows="dynamic",
-                    hide_index=True,
-                    key=f"empty_tasks_df_{project_id}"
-                )
+                st.warning(f"Are you sure you want to delete the task '{task_name}'? This action cannot be undone.")
                 
-                # Handle new task additions
-                for _, row in edited_empty_df.iterrows():
-                    if not pd.isna(row["Name"]):
-                        # Find member_id from name
-                        assigned_to = None
-                        if not pd.isna(row["Assigned To Name"]) and row["Assigned To Name"] != "Unassigned":
-                            assigned_to = next((id for id, name in member_dict.items() if name == row["Assigned To Name"]), None)
-                        
-                        db.execute_query(
-                            """INSERT INTO tasks 
-                               (project_id, sub_project_id, name, description, jira_ticket, status, assigned_to)
-                               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                            (project_id, None, row["Name"], row["Description"] or "", row["Jira Ticket"] or "", 
-                             row["Change Status"], assigned_to)
-                        )
-                        st.success(f"Added new task: {row['Name']}")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("Cancel", use_container_width=True):
+                        # Clear session state
+                        st.session_state.delete_task_id = None
                         st.rerun()
+                
+                with col2:
+                    if st.button("Delete", use_container_width=True):
+                        # Delete the task
+                        db.execute_query("DELETE FROM tasks WHERE id = ?", (task_id,))
+                        
+                        # Log the activity
+                        db.log_activity(
+                            action_type="delete",
+                            entity_type="task",
+                            entity_id=task_id,
+                            entity_name=task_name,
+                            description=f"Deleted task: {task_name}",
+                            project_id=project_id
+                        )
+                        
+                        st.success(f"Task '{task_name}' deleted successfully!")
+                        
+                        # Clear session state
+                        st.session_state.delete_task_id = None
+                        st.rerun()
+            
+            # Call the dialog function
+            delete_task_dialog()
         
         # Sub-Projects Tab
         with tab2:
