@@ -6,6 +6,109 @@ import utils.database as db
 def app():
     st.header("Project & Task Management")
     
+    # Store task ID for dialogs
+    if "selected_task_id" not in st.session_state:
+        st.session_state.selected_task_id = None
+        st.session_state.selected_task_name = None
+        st.session_state.show_note_modal = False
+        st.session_state.show_reminder_modal = False
+    
+    # Functions to handle modal state
+    @st.dialog("Add Note to Task")
+    def open_note_modal(task_id, task_name):
+        # st.session_state.selected_task_id = task_id
+        # st.session_state.selected_task_name = task_name
+        # st.session_state.show_note_modal = True
+        note_modal = st.container()
+        with note_modal:
+            st.subheader(f"Add Note to: {task_name}")
+            note_text = st.text_area("Note", height=150)
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Cancel", use_container_width=True):
+                    close_modals()
+            with col2:
+                if st.button("Add Note", use_container_width=True):
+                    if note_text:
+                        db.execute_query(
+                            "INSERT INTO notes (task_id, note, created_at) VALUES (?, ?, ?)",
+                            (task_id, note_text, datetime.now().isoformat())
+                        )
+                        st.success("Note added successfully!")
+                        close_modals()
+    
+    @st.dialog("Add Reminder for Task")
+    def open_reminder_modal(task_id, task_name):
+        # st.session_state.selected_task_id = task_id
+        # st.session_state.selected_task_name = task_name
+        # st.session_state.show_reminder_modal = True
+        reminder_modal = st.container()
+        with reminder_modal:
+            st.subheader(f"Add Reminder for: {task_name}")
+            reminder_date = st.date_input("Reminder Date")
+            reminder_note = st.text_area("Reminder Note", height=100)
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Cancel", use_container_width=True):
+                    close_modals()
+            with col2:
+                if st.button("Add Reminder", use_container_width=True):
+                    if reminder_note:
+                        db.execute_query(
+                            "INSERT INTO reminders (task_id, reminder_date, note) VALUES (?, ?, ?)",
+                            (task_id, reminder_date.isoformat(), reminder_note)
+                        )
+                        st.success("Reminder added successfully!")
+                        close_modals()
+    
+    def close_modals():
+        st.rerun()
+    
+    # # Add Note Modal
+    # if st.session_state.show_note_modal:
+    #     note_modal = st.container()
+    #     with note_modal:
+    #         st.subheader(f"Add Note to: {st.session_state.selected_task_name}")
+    #         note_text = st.text_area("Note", height=150)
+    #         col1, col2 = st.columns(2)
+    #         with col1:
+    #             if st.button("Cancel", use_container_width=True):
+    #                 close_modals()
+    #                 st.rerun()
+    #         with col2:
+    #             if st.button("Add Note", use_container_width=True):
+    #                 if note_text:
+    #                     db.execute_query(
+    #                         "INSERT INTO notes (task_id, note, created_at) VALUES (?, ?, ?)",
+    #                         (st.session_state.selected_task_id, note_text, datetime.now().isoformat())
+    #                     )
+    #                     st.success("Note added successfully!")
+    #                     close_modals()
+    #                     st.rerun()
+    
+    # # Add Reminder Modal
+    # if st.session_state.show_reminder_modal:
+    #     reminder_modal = st.container()
+    #     with reminder_modal:
+    #         st.subheader(f"Add Reminder for: {st.session_state.selected_task_name}")
+    #         reminder_date = st.date_input("Reminder Date")
+    #         reminder_note = st.text_area("Reminder Note", height=100)
+    #         col1, col2 = st.columns(2)
+    #         with col1:
+    #             if st.button("Cancel", use_container_width=True):
+    #                 close_modals()
+    #                 st.rerun()
+    #         with col2:
+    #             if st.button("Add Reminder", use_container_width=True):
+    #                 if reminder_note:
+    #                     db.execute_query(
+    #                         "INSERT INTO reminders (task_id, reminder_date, note) VALUES (?, ?, ?)",
+    #                         (st.session_state.selected_task_id, reminder_date.isoformat(), reminder_note)
+    #                     )
+    #                     st.success("Reminder added successfully!")
+    #                     close_modals()
+    #                     st.rerun()
+    
     # Add buttons at the top for adding projects and tasks
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -217,6 +320,18 @@ def app():
                     key=f"tasks_df_{project_id}"
                 )
                 
+                # Add action buttons for each task
+                for index, row in tasks_df.iterrows():
+                    task_id = row["ID"]
+                    task_name = row["Name"]
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("📝 Add Note", key=f"note_btn_{task_id}", use_container_width=True):
+                            open_note_modal(task_id, task_name)
+                    with col2:
+                        if st.button("🔔 Add Reminder", key=f"reminder_btn_{task_id}", use_container_width=True):
+                            open_reminder_modal(task_id, task_name)
+                
                 # Handle task deletions
                 for index, row in edited_tasks_df.iterrows():
                     if row["Delete"] and index < len(tasks_df):
@@ -414,13 +529,136 @@ def app():
                                 key=f"sub_tasks_df_{sub_id}"
                             )
                             
-                            # Handle task deletions and updates (similar to project tasks)
-                            # ... (similar code as for project tasks)
+                            # Add action buttons for each sub-task
+                            for index, row in sub_tasks_df.iterrows():
+                                sub_task_id = row["ID"]
+                                sub_task_name = row["Name"]
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    if st.button("📝 Add Note", key=f"note_btn_sub_{sub_task_id}", use_container_width=True):
+                                        open_note_modal(sub_task_id, sub_task_name)
+                                with col2:
+                                    if st.button("🔔 Add Reminder", key=f"reminder_btn_sub_{sub_task_id}", use_container_width=True):
+                                        open_reminder_modal(sub_task_id, sub_task_name)
+                            
+                            # Handle sub-task deletions and updates (similar to project tasks)
+                            for index, row in edited_sub_tasks_df.iterrows():
+                                if row["Delete"] and index < len(sub_tasks_df):
+                                    # Check if task has notes or reminders
+                                    note_count = db.execute_query(
+                                        "SELECT COUNT(*) FROM notes WHERE task_id = ?", 
+                                        (row["ID"],)
+                                    )[0][0]
+                                    
+                                    reminder_count = db.execute_query(
+                                        "SELECT COUNT(*) FROM reminders WHERE task_id = ?", 
+                                        (row["ID"],)
+                                    )[0][0]
+                                    
+                                    if note_count > 0 or reminder_count > 0:
+                                        st.error(f"Cannot delete task '{row['Name']}' with notes or reminders. Please delete them first.")
+                                    else:
+                                        db.execute_query("DELETE FROM tasks WHERE id = ?", (row["ID"],))
+                                        st.success(f"Task '{row['Name']}' deleted successfully!")
+                                        st.rerun()
+                                
+                                if index < len(sub_tasks_df):  # This is an edit to existing row
+                                    # Check for status changes
+                                    if row["Status"] != row["Change Status"]:
+                                        db.execute_query(
+                                            "UPDATE tasks SET status = ? WHERE id = ?",
+                                            (row["Change Status"], row["ID"])
+                                        )
+                                        st.success(f"Updated status for task '{row['Name']}' to {row['Change Status']}")
+                                        st.rerun()
+                                    
+                                    # Check for assigned person changes
+                                    current_assigned = sub_tasks_df.iloc[index]["Assigned To Name"]
+                                    if row["Assigned To Name"] != current_assigned:
+                                        # Find member_id from name
+                                        assigned_to = None
+                                        if row["Assigned To Name"] != "Unassigned":
+                                            assigned_to = next((id for id, name in member_dict.items() if name == row["Assigned To Name"]), None)
+                                        
+                                        db.execute_query(
+                                            "UPDATE tasks SET assigned_to = ? WHERE id = ?",
+                                            (assigned_to, row["ID"])
+                                        )
+                                        st.success(f"Reassigned task '{row['Name']}' to {row['Assigned To Name']}")
+                                        st.rerun()
+                                    
+                                    # Check for other changes
+                                    if not sub_tasks_df.iloc[index][["Name", "Description", "Jira Ticket"]].equals(
+                                        row[["Name", "Description", "Jira Ticket"]]
+                                    ):
+                                        db.execute_query(
+                                            """UPDATE tasks 
+                                               SET name = ?, description = ?, jira_ticket = ?
+                                               WHERE id = ?""",
+                                            (row["Name"], row["Description"], row["Jira Ticket"], row["ID"])
+                                        )
+                                        st.success(f"Updated task: {row['Name']}")
+                                        st.rerun()
+                                else:  # This is a new row
+                                    if not pd.isna(row["Name"]):
+                                        # Find member_id from name
+                                        assigned_to = None
+                                        if not pd.isna(row["Assigned To Name"]) and row["Assigned To Name"] != "Unassigned":
+                                            assigned_to = next((id for id, name in member_dict.items() if name == row["Assigned To Name"]), None)
+                                        
+                                        db.execute_query(
+                                            """INSERT INTO tasks 
+                                               (project_id, sub_project_id, name, description, jira_ticket, status, assigned_to)
+                                               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                                            (project_id, sub_project_id, row["Name"], row["Description"] or "", row["Jira Ticket"] or "", 
+                                             row["Change Status"], assigned_to)
+                                        )
+                                        st.success(f"Added new task: {row['Name']}")
+                                        st.rerun()
                         else:
                             st.info(f"No tasks for sub-project {sub_name} yet.")
                             
                             # Show an empty table with structure for adding new tasks
-                            # ... (similar code as for project tasks)
+                            empty_sub_tasks_df = pd.DataFrame(columns=["Name", "Description", "Jira Ticket", "Change Status", "Assigned To Name"])
+                            edited_empty_sub_tasks_df = st.data_editor(
+                                empty_sub_tasks_df,
+                                column_config={
+                                    "Name": st.column_config.TextColumn("Name"),
+                                    "Description": st.column_config.TextColumn("Description"),
+                                    "Jira Ticket": st.column_config.TextColumn("Jira Ticket"),
+                                    "Change Status": st.column_config.SelectboxColumn(
+                                        "Status",
+                                        options=["not started", "started", "blocked", "waiting", "in progress", "completed"],
+                                        required=True
+                                    ),
+                                    "Assigned To Name": st.column_config.SelectboxColumn(
+                                        "Assigned To",
+                                        options=member_options,
+                                        required=True
+                                    )
+                                },
+                                num_rows="dynamic",
+                                hide_index=True,
+                                key=f"empty_sub_tasks_df_{sub_id}"
+                            )
+                            
+                            # Handle new sub-task additions
+                            for _, row in edited_empty_sub_tasks_df.iterrows():
+                                if not pd.isna(row["Name"]):
+                                    # Find member_id from name
+                                    assigned_to = None
+                                    if not pd.isna(row["Assigned To Name"]) and row["Assigned To Name"] != "Unassigned":
+                                        assigned_to = next((id for id, name in member_dict.items() if name == row["Assigned To Name"]), None)
+                                    
+                                    db.execute_query(
+                                        """INSERT INTO tasks 
+                                           (project_id, sub_project_id, name, description, jira_ticket, status, assigned_to)
+                                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                                        (project_id, sub_project_id, row["Name"], row["Description"] or "", row["Jira Ticket"] or "", 
+                                         row["Change Status"], assigned_to)
+                                    )
+                                    st.success(f"Added new task: {row['Name']}")
+                                    st.rerun()
             
             st.markdown("---")  # Separator between projects
     else:
