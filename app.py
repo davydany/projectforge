@@ -5,13 +5,12 @@ import pandas as pd
 import plotly.express as px
 
 # Import pages
-import pages.teams
-import pages.members
 import pages.projects
 import pages.tasks
 import pages.notes
 import pages.reminders
 import pages.dashboard
+import pages.teams_members
 import utils.database as db
 
 # Initialize the database
@@ -31,12 +30,11 @@ st.sidebar.image("https://img.icons8.com/color/96/000000/project-management.png"
 # Main navigation
 pages = {
     "Dashboard": pages.dashboard,
-    "Teams": pages.teams,
-    "Team Members": pages.members,
+    "Teams & Members": pages.teams_members,
     "Projects": pages.projects,
     "Tasks": pages.tasks,
     "Notes": pages.notes,
-    "Reminders": pages.reminders
+    "Reminders": pages.reminders,
 }
 
 selection = st.sidebar.radio("Navigate to", list(pages.keys()))
