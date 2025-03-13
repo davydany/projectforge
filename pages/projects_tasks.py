@@ -705,68 +705,113 @@ def app():
                 task_ids = [t[0] for t in all_tasks]
                 task_names = {t[0]: t[1] for t in all_tasks}
                 
-                # Notes section
-                st.subheader("Notes")
+                # Create two columns for notes and reminders
+                notes_col, reminders_col = st.columns(2)
                 
-                notes = db.execute_query("""
-                    SELECT n.id, n.task_id, n.note, n.created_at
-                    FROM notes n
-                    WHERE n.task_id IN ({})
-                    ORDER BY n.created_at DESC
-                """.format(','.join(['?'] * len(task_ids))), task_ids)
-                
-                if notes:
-                    for note_id, task_id, note_text, created_at in notes:
-                        # Format date
-                        created_at = created_at.split('T')[0] + " " + created_at.split('T')[1][:8] if 'T' in created_at else created_at
-                        
-                        with st.expander(f"Note for: {task_names[task_id]} ({created_at})", expanded=False):
-                            st.write(note_text)
-                            if st.button("Delete Note", key=f"del_note_{note_id}"):
-                                db.execute_query("DELETE FROM notes WHERE id = ?", (note_id,))
-                                st.success("Note deleted successfully!")
-                                st.rerun()
-                else:
-                    st.info("No notes for this project yet.")
-                
-                # Reminders section
-                st.subheader("Reminders")
-                
-                reminders = db.execute_query("""
-                    SELECT r.id, r.task_id, r.reminder_date, r.note, r.followed_up
-                    FROM reminders r
-                    WHERE r.task_id IN ({})
-                    ORDER BY r.reminder_date
-                """.format(','.join(['?'] * len(task_ids))), task_ids)
-                
-                if reminders:
-                    for reminder_id, task_id, reminder_date, reminder_note, followed_up in reminders:
-                        # Format date
-                        reminder_date = reminder_date.split('T')[0] if 'T' in reminder_date else reminder_date
-                        
-                        status = "✅ Followed up" if followed_up else "⏰ Pending"
-                        
-                        with st.expander(f"Reminder for: {task_names[task_id]} ({reminder_date}) - {status}", expanded=False):
-                            st.write(reminder_note)
-                            
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                if st.button("Delete Reminder", key=f"del_reminder_{reminder_id}"):
-                                    db.execute_query("DELETE FROM reminders WHERE id = ?", (reminder_id,))
-                                    st.success("Reminder deleted successfully!")
+                # Notes section in left column
+                with notes_col:
+                    st.subheader("Notes")
+                    
+                    notes = db.execute_query("""
+                        SELECT n.id, n.task_id, n.note, n.created_at
+                        FROM notes n
+                        WHERE n.task_id IN ({})
+                        ORDER BY n.created_at DESC
+                    """.format(','.join(['?'] * len(task_ids))), task_ids)
+                    
+                    if notes:
+                        # Create a container for scrollable notes list
+                        notes_container = st.container()
+                        with notes_container:
+                            for note_id, task_id, note_text, created_at in notes:
+                                # Format date
+                                created_at = created_at.split('T')[0] + " " + created_at.split('T')[1][:8] if 'T' in created_at else created_at
+                                
+                                # Create a card-like display for each note
+                                st.markdown(f"""
+                                <div style="border:1px solid #ddd; border-radius:5px; padding:10px; margin-bottom:10px;">
+                                    <p style="color:#888; font-size:0.8em;">{created_at} | Task: <b>{task_names[task_id]}</b></p>
+                                    <p>{note_text}</p>
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                                # Add delete button below each note
+                                if st.button("Delete Note", key=f"del_note_{note_id}", use_container_width=True):
+                                    db.execute_query("DELETE FROM notes WHERE id = ?", (note_id,))
+                                    st.success("Note deleted successfully!")
                                     st.rerun()
-                            with col2:
-                                if not followed_up:
-                                    if st.button("Mark as Followed Up", key=f"followup_{reminder_id}"):
-                                        db.execute_query("UPDATE reminders SET followed_up = 1 WHERE id = ?", (reminder_id,))
-                                        st.success("Reminder marked as followed up!")
+                    else:
+                        st.info("No notes for this project yet.")
+                
+                # Reminders section in right column
+                with reminders_col:
+                    st.subheader("Reminders")
+                    
+                    # Get today's date for highlighting
+                    today = datetime.now().date().isoformat()
+                    
+                    reminders = db.execute_query("""
+                        SELECT r.id, r.task_id, r.reminder_date, r.note, r.followed_up
+                        FROM reminders r
+                        WHERE r.task_id IN ({})
+                        ORDER BY 
+                            r.followed_up ASC,  -- Pending reminders first
+                            CASE 
+                                WHEN r.reminder_date = ? THEN 0  -- Today's reminders
+                                WHEN r.reminder_date < ? THEN 1  -- Overdue reminders
+                                ELSE 2  -- Future reminders
+                            END,
+                            r.reminder_date ASC  -- Chronological order
+                    """.format(','.join(['?'] * len(task_ids))), task_ids + [today, today])
+                    
+                    if reminders:
+                        # Create a container for scrollable reminders list
+                        reminders_container = st.container()
+                        with reminders_container:
+                            for reminder_id, task_id, reminder_date, reminder_note, followed_up in reminders:
+                                # Format date
+                                reminder_date = reminder_date.split('T')[0] if 'T' in reminder_date else reminder_date
+                                
+                                # Determine if this is today's reminder
+                                is_today = reminder_date == today
+                                is_overdue = reminder_date < today
+                                
+                                # Set background color based on status
+                                bg_color = "#ffcccc" if is_today and not followed_up else \
+                                          "#ffe6cc" if is_overdue and not followed_up else \
+                                          "#e6ffe6" if followed_up else "#f9f9f9"
+                                
+                                status = "✅ Followed up" if followed_up else \
+                                        "⚠️ Overdue" if is_overdue else \
+                                        "🔔 Today" if is_today else "⏰ Upcoming"
+                                
+                                # Create a card-like display for each reminder with appropriate highlighting
+                                st.markdown(f"""
+                                <div style="border:1px solid #ddd; border-radius:5px; padding:10px; margin-bottom:10px; background-color:{bg_color};">
+                                    <p style="color:#555; font-size:0.8em;">{reminder_date} | Task: <b>{task_names[task_id]}</b> | <span style="font-weight:bold;">{status}</span></p>
+                                    <p>{reminder_note}</p>
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                                # Add action buttons below each reminder
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    if st.button("Delete", key=f"del_reminder_{reminder_id}", use_container_width=True):
+                                        db.execute_query("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+                                        st.success("Reminder deleted successfully!")
                                         st.rerun()
-                                else:
-                                    if st.button("Mark as Pending", key=f"pending_{reminder_id}"):
-                                        db.execute_query("UPDATE reminders SET followed_up = 0 WHERE id = ?", (reminder_id,))
-                                        st.success("Reminder marked as pending!")
-                                        st.rerun()
-                else:
-                    st.info("No reminders for this project yet.")
+                                with col2:
+                                    if not followed_up:
+                                        if st.button("Mark Complete", key=f"followup_{reminder_id}", use_container_width=True):
+                                            db.execute_query("UPDATE reminders SET followed_up = 1 WHERE id = ?", (reminder_id,))
+                                            st.success("Reminder marked as followed up!")
+                                            st.rerun()
+                                    else:
+                                        if st.button("Mark Pending", key=f"pending_{reminder_id}", use_container_width=True):
+                                            db.execute_query("UPDATE reminders SET followed_up = 0 WHERE id = ?", (reminder_id,))
+                                            st.success("Reminder marked as pending!")
+                                            st.rerun()
+                    else:
+                        st.info("No reminders for this project yet.")
             else:
                 st.info("No tasks in this project yet. Add tasks to create notes and reminders.") 
