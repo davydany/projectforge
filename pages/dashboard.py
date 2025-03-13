@@ -136,27 +136,48 @@ def app():
     # Team Progress Section
     st.subheader("Team Member Progress")
     
+    # Get all team members
+    all_members = db.execute_query("SELECT id, first_name || ' ' || last_name as name FROM team_members")
+    member_map = {id: name for id, name in all_members}
+
+    # Get task progress data
     progress_data = db.execute_query("SELECT assigned_to, status, COUNT(*) FROM tasks GROUP BY assigned_to, status")
-    
+
+    # Initialize progress dictionary with all members
     progress = {}
+    for member_id, name in all_members:
+        progress[member_id] = {"name": name, "total": 0, "completed": 0}
+
+    # Add "Unassigned" category
+    progress[None] = {"name": "Unassigned", "total": 0, "completed": 0}
+
+    # Fill in task data
     for member_id, status, count in progress_data:
         if member_id not in progress:
-            progress[member_id] = {"total": 0, "completed": 0}
+            # This shouldn't happen, but just in case
+            progress[member_id] = {"name": member_map.get(member_id, "Unknown"), "total": 0, "completed": 0}
+        
         progress[member_id]["total"] += count
         if status == "completed":
             progress[member_id]["completed"] += count
-    
-    if progress:
-        # Create progress bars
-        for member_id, data in progress.items():
-            name = member_map.get(member_id, "Unassigned") if member_id else "Unassigned"
-            pct = (data["completed"] / data["total"]) * 100 if data["total"] else 0
-            st.write(f"**{name}**")
+
+    # Display progress for all members
+    for member_id, data in progress.items():
+        name = data["name"]
+        total = data["total"]
+        completed = data["completed"]
+        
+        st.write(f"**{name}**")
+        
+        if total > 0:
+            pct = (completed / total) * 100
             st.progress(int(pct))
-            st.write(f"{pct:.1f}% completed ({data['completed']}/{data['total']} tasks)")
-            st.write("---")
-    else:
-        st.info("No task data available yet.")
+            st.write(f"{pct:.1f}% completed ({completed}/{total} tasks)")
+        else:
+            st.progress(0)
+            st.write("No tasks assigned")
+        
+        st.write("---")
     
     # Recent Activity
     st.header("Recent Activity")
