@@ -106,7 +106,7 @@ def init_db():
         )
     ''')
     conn.commit()
-    conn.close()
+    # conn.close()
 
 # Helper Functions
 def get_teams():
