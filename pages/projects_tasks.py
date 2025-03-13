@@ -6,19 +6,30 @@ import utils.database as db
 def app():
     st.header("Project & Task Management")
     
-    # Store task ID for dialogs
-    if "selected_task_id" not in st.session_state:
-        st.session_state.selected_task_id = None
-        st.session_state.selected_task_name = None
-        st.session_state.show_note_modal = False
-        st.session_state.show_reminder_modal = False
+    # Initialize session state for navigation
+    if "view" not in st.session_state:
+        st.session_state.view = "list"
+    if "selected_project_id" not in st.session_state:
+        st.session_state.selected_project_id = None
+    if "selected_project_name" not in st.session_state:
+        st.session_state.selected_project_name = None
     
-    # Functions to handle modal state
+    # Functions to handle navigation
+    def view_project_details(project_id, project_name):
+        st.session_state.view = "detail"
+        st.session_state.selected_project_id = project_id
+        st.session_state.selected_project_name = project_name
+        st.rerun()
+    
+    def back_to_list():
+        st.session_state.view = "list"
+        st.session_state.selected_project_id = None
+        st.session_state.selected_project_name = None
+        st.rerun()
+    
+    # Dialog functions for notes and reminders
     @st.dialog("Add Note to Task")
     def open_note_modal(task_id, task_name):
-        # st.session_state.selected_task_id = task_id
-        # st.session_state.selected_task_name = task_name
-        # st.session_state.show_note_modal = True
         note_modal = st.container()
         with note_modal:
             st.subheader(f"Add Note to: {task_name}")
@@ -39,9 +50,6 @@ def app():
     
     @st.dialog("Add Reminder for Task")
     def open_reminder_modal(task_id, task_name):
-        # st.session_state.selected_task_id = task_id
-        # st.session_state.selected_task_name = task_name
-        # st.session_state.show_reminder_modal = True
         reminder_modal = st.container()
         with reminder_modal:
             st.subheader(f"Add Reminder for: {task_name}")
@@ -64,106 +72,27 @@ def app():
     def close_modals():
         st.rerun()
     
-    # # Add Note Modal
-    # if st.session_state.show_note_modal:
-    #     note_modal = st.container()
-    #     with note_modal:
-    #         st.subheader(f"Add Note to: {st.session_state.selected_task_name}")
-    #         note_text = st.text_area("Note", height=150)
-    #         col1, col2 = st.columns(2)
-    #         with col1:
-    #             if st.button("Cancel", use_container_width=True):
-    #                 close_modals()
-    #                 st.rerun()
-    #         with col2:
-    #             if st.button("Add Note", use_container_width=True):
-    #                 if note_text:
-    #                     db.execute_query(
-    #                         "INSERT INTO notes (task_id, note, created_at) VALUES (?, ?, ?)",
-    #                         (st.session_state.selected_task_id, note_text, datetime.now().isoformat())
-    #                     )
-    #                     st.success("Note added successfully!")
-    #                     close_modals()
-    #                     st.rerun()
-    
-    # # Add Reminder Modal
-    # if st.session_state.show_reminder_modal:
-    #     reminder_modal = st.container()
-    #     with reminder_modal:
-    #         st.subheader(f"Add Reminder for: {st.session_state.selected_task_name}")
-    #         reminder_date = st.date_input("Reminder Date")
-    #         reminder_note = st.text_area("Reminder Note", height=100)
-    #         col1, col2 = st.columns(2)
-    #         with col1:
-    #             if st.button("Cancel", use_container_width=True):
-    #                 close_modals()
-    #                 st.rerun()
-    #         with col2:
-    #             if st.button("Add Reminder", use_container_width=True):
-    #                 if reminder_note:
-    #                     db.execute_query(
-    #                         "INSERT INTO reminders (task_id, reminder_date, note) VALUES (?, ?, ?)",
-    #                         (st.session_state.selected_task_id, reminder_date.isoformat(), reminder_note)
-    #                     )
-    #                     st.success("Reminder added successfully!")
-    #                     close_modals()
-    #                     st.rerun()
-    
-    # Add buttons at the top for adding projects and tasks
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        add_project_button = st.button("➕ Add New Project", use_container_width=True)
-    with col2:
-        add_subproject_button = st.button("➕ Add New Sub-Project", use_container_width=True)
-    with col3:
-        add_task_button = st.button("➕ Add New Task", use_container_width=True)
-    
     # Get team members for dropdown
     members = db.get_team_members()
     member_dict = {id: name for id, name in members}
     member_options = ["Unassigned"] + [name for _, name in members]
     
-    # Add Project Dialog
-    if add_project_button:
-        with st.form(key="add_project_form"):
-            st.subheader("Add New Project")
-            name = st.text_input("Project Name")
-            description = st.text_area("Description")
-            start_date = st.date_input("Start Date")
-            end_date = st.date_input("End Date")
-            
-            assign_to_member = st.checkbox("Assign to team member", value=False)
-            assigned_to = None
-            
-            if assign_to_member and members:
-                member_name = st.selectbox("Assign To", member_options)
-                if member_name != "Unassigned":
-                    assigned_to = next((id for id, name in member_dict.items() if name == member_name), None)
-            
-            submit_button = st.form_submit_button("Add Project")
-            if submit_button and name:  # Ensure name is not empty
-                db.execute_query(
-                    """INSERT INTO projects 
-                       (name, description, start_date, end_date, assigned_to) 
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (name, description, start_date.isoformat(), end_date.isoformat(), assigned_to)
-                )
-                st.success("Project added successfully!")
-                st.rerun()
-    
-    # Add Sub-Project Dialog
-    if add_subproject_button:
-        with st.form(key="add_subproject_form"):
-            st.subheader("Add New Sub-Project")
-            
-            # Get projects for parent selection
-            projects = db.get_projects()
-            if projects:
-                project_options = [name for _, name in projects]
-                parent_project = st.selectbox("Parent Project", project_options)
-                project_id = next((id for id, name in projects if name == parent_project), None)
-                
-                name = st.text_input("Sub-Project Name")
+    # LIST VIEW
+    if st.session_state.view == "list":
+        # Add buttons at the top for adding projects and tasks
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            add_project_button = st.button("➕ Add New Project", use_container_width=True)
+        with col2:
+            add_subproject_button = st.button("➕ Add New Sub-Project", use_container_width=True)
+        with col3:
+            add_task_button = st.button("➕ Add New Task", use_container_width=True)
+        
+        # Add Project Dialog
+        if add_project_button:
+            with st.form(key="add_project_form"):
+                st.subheader("Add New Project")
+                name = st.text_input("Project Name")
                 description = st.text_area("Description")
                 start_date = st.date_input("Start Date")
                 end_date = st.date_input("End Date")
@@ -176,113 +105,210 @@ def app():
                     if member_name != "Unassigned":
                         assigned_to = next((id for id, name in member_dict.items() if name == member_name), None)
                 
-                submit_button = st.form_submit_button("Add Sub-Project")
+                submit_button = st.form_submit_button("Add Project")
                 if submit_button and name:  # Ensure name is not empty
                     db.execute_query(
-                        """INSERT INTO sub_projects 
-                           (project_id, name, description, start_date, end_date, assigned_to) 
-                           VALUES (?, ?, ?, ?, ?, ?)""",
-                        (project_id, name, description, start_date.isoformat(), end_date.isoformat(), assigned_to)
+                        """INSERT INTO projects 
+                           (name, description, start_date, end_date, assigned_to) 
+                           VALUES (?, ?, ?, ?, ?)""",
+                        (name, description, start_date.isoformat(), end_date.isoformat(), assigned_to)
                     )
-                    st.success("Sub-Project added successfully!")
+                    st.success("Project added successfully!")
                     st.rerun()
-            else:
-                st.warning("Please add a project first before adding sub-projects.")
-                st.form_submit_button("Add Sub-Project", disabled=True)
-    
-    # Add Task Dialog
-    if add_task_button:
-        with st.form(key="add_task_form"):
-            st.subheader("Add New Task")
-            
-            task_type = st.radio("Task Type", ["Project Task", "Sub-Project Task"])
-            
-            if task_type == "Project Task":
+        
+        # Add Sub-Project Dialog
+        if add_subproject_button:
+            with st.form(key="add_subproject_form"):
+                st.subheader("Add New Sub-Project")
+                
+                # Get projects for parent selection
                 projects = db.get_projects()
                 if projects:
                     project_options = [name for _, name in projects]
-                    parent = st.selectbox("Select Project", project_options)
-                    project_id = next((id for id, name in projects if name == parent), None)
-                    sub_project_id = None
-                else:
-                    st.warning("Please add a project first.")
-                    st.form_submit_button("Add Task", disabled=True)
-                    return
-            else:
-                sub_projects = db.get_sub_projects()
-                if sub_projects:
-                    subproj_options = [name for _, name in sub_projects]
-                    parent = st.selectbox("Select Sub-Project", subproj_options)
-                    sub_project_id = next((id for id, name in sub_projects if name == parent), None)
-                    project_id = None
-                else:
-                    st.warning("Please add a sub-project first.")
-                    st.form_submit_button("Add Task", disabled=True)
-                    return
-            
-            name = st.text_input("Task Name")
-            description = st.text_area("Description")
-            jira_ticket = st.text_input("Jira Ticket (optional)")
-            status = st.selectbox("Status", ["not started", "started", "blocked", "waiting", "in progress", "completed"])
-            
-            if members:
-                member_name = st.selectbox("Assign To", member_options)
-                if member_name != "Unassigned":
-                    assigned_to = next((id for id, name in member_dict.items() if name == member_name), None)
-                else:
+                    parent_project = st.selectbox("Parent Project", project_options)
+                    project_id = next((id for id, name in projects if name == parent_project), None)
+                    
+                    name = st.text_input("Sub-Project Name")
+                    description = st.text_area("Description")
+                    start_date = st.date_input("Start Date")
+                    end_date = st.date_input("End Date")
+                    
+                    assign_to_member = st.checkbox("Assign to team member", value=False)
                     assigned_to = None
+                    
+                    if assign_to_member and members:
+                        member_name = st.selectbox("Assign To", member_options)
+                        if member_name != "Unassigned":
+                            assigned_to = next((id for id, name in member_dict.items() if name == member_name), None)
+                    
+                    submit_button = st.form_submit_button("Add Sub-Project")
+                    if submit_button and name:  # Ensure name is not empty
+                        db.execute_query(
+                            """INSERT INTO sub_projects 
+                               (project_id, name, description, start_date, end_date, assigned_to) 
+                               VALUES (?, ?, ?, ?, ?, ?)""",
+                            (project_id, name, description, start_date.isoformat(), end_date.isoformat(), assigned_to)
+                        )
+                        st.success("Sub-Project added successfully!")
+                        st.rerun()
+                else:
+                    st.warning("Please add a project first before adding sub-projects.")
+                    st.form_submit_button("Add Sub-Project", disabled=True)
+        
+        # Add Task Dialog
+        if add_task_button:
+            with st.form(key="add_task_form"):
+                st.subheader("Add New Task")
                 
-                submit_button = st.form_submit_button("Add Task")
-                if submit_button and name:  # Ensure name is not empty
-                    db.execute_query(
-                        """INSERT INTO tasks 
-                           (project_id, sub_project_id, name, description, jira_ticket, status, assigned_to)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                        (project_id, sub_project_id, name, description, jira_ticket, status, assigned_to)
-                    )
-                    st.success("Task added successfully!")
-                    st.rerun()
-            else:
-                st.warning("Please add team members first.")
-                st.form_submit_button("Add Task", disabled=True)
+                task_type = st.radio("Task Type", ["Project Task", "Sub-Project Task"])
+                
+                if task_type == "Project Task":
+                    projects = db.get_projects()
+                    if projects:
+                        project_options = [name for _, name in projects]
+                        parent = st.selectbox("Select Project", project_options)
+                        project_id = next((id for id, name in projects if name == parent), None)
+                        sub_project_id = None
+                    else:
+                        st.warning("Please add a project first.")
+                        st.form_submit_button("Add Task", disabled=True)
+                        return
+                else:
+                    sub_projects = db.get_sub_projects()
+                    if sub_projects:
+                        subproj_options = [name for _, name in sub_projects]
+                        parent = st.selectbox("Select Sub-Project", subproj_options)
+                        sub_project_id = next((id for id, name in sub_projects if name == parent), None)
+                        project_id = None
+                    else:
+                        st.warning("Please add a sub-project first.")
+                        st.form_submit_button("Add Task", disabled=True)
+                    return
+                
+                name = st.text_input("Task Name")
+                description = st.text_area("Description")
+                jira_ticket = st.text_input("Jira Ticket (optional)")
+                status = st.selectbox("Status", ["not started", "started", "blocked", "waiting", "in progress", "completed"])
+                
+                if members:
+                    member_name = st.selectbox("Assign To", member_options)
+                    if member_name != "Unassigned":
+                        assigned_to = next((id for id, name in member_dict.items() if name == member_name), None)
+                    else:
+                        assigned_to = None
+                    
+                    submit_button = st.form_submit_button("Add Task")
+                    if submit_button and name:  # Ensure name is not empty
+                        db.execute_query(
+                            """INSERT INTO tasks 
+                               (project_id, sub_project_id, name, description, jira_ticket, status, assigned_to)
+                               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                            (project_id, sub_project_id, name, description, jira_ticket, status, assigned_to)
+                        )
+                        st.success("Task added successfully!")
+                        st.rerun()
+                else:
+                    st.warning("Please add team members first.")
+                    st.form_submit_button("Add Task", disabled=True)
+        
+        # Display projects list
+        st.subheader("Projects")
+        
+        # Get projects data
+        projects_data = db.execute_query("""
+            SELECT p.id, p.name, p.description, p.start_date, p.end_date, p.assigned_to
+            FROM projects p
+            ORDER BY p.start_date DESC
+        """)
+        
+        if projects_data:
+            # Display projects as cards
+            for project_id, name, description, start_date, end_date, assigned_to in projects_data:
+                # Format dates
+                start_date = start_date.split('T')[0] if 'T' in start_date else start_date
+                end_date = end_date.split('T')[0] if 'T' in end_date else end_date
+                
+                # Get assigned person name
+                assigned_name = member_dict.get(assigned_to, "Unassigned") if assigned_to else "Unassigned"
+                
+                # Get task count
+                task_count = db.execute_query(
+                    "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND sub_project_id IS NULL", 
+                    (project_id,)
+                )[0][0]
+                
+                # Get sub-project count
+                subproject_count = db.execute_query(
+                    "SELECT COUNT(*) FROM sub_projects WHERE project_id = ?", 
+                    (project_id,)
+                )[0][0]
+                
+                # Create a card-like display for each project
+                with st.container():
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.markdown(f"### {name}")
+                        st.markdown(f"**Timeline:** {start_date} to {end_date} | **Assigned to:** {assigned_name}")
+                        st.markdown(f"**Tasks:** {task_count} | **Sub-Projects:** {subproject_count}")
+                        if description:
+                            st.markdown(f"{description[:100]}..." if len(description) > 100 else description)
+                    with col2:
+                        st.button("View Details", key=f"view_{project_id}", 
+                                 on_click=view_project_details, args=(project_id, name),
+                                 use_container_width=True)
+                    st.markdown("---")
+        else:
+            st.info("No projects added yet. Use the 'Add New Project' button to create a project.")
     
-    # Display projects and their tasks
-    projects_data = db.execute_query("""
-        SELECT p.id, p.name, p.description, p.start_date, p.end_date, p.assigned_to
-        FROM projects p
-        ORDER BY p.start_date DESC
-    """)
-    
-    if projects_data:
-        for project_id, project_name, project_desc, start_date, end_date, assigned_to in projects_data:
-            # Format dates
-            start_date = start_date.split('T')[0] if 'T' in start_date else start_date
-            end_date = end_date.split('T')[0] if 'T' in end_date else end_date
+    # DETAIL VIEW
+    else:  # st.session_state.view == "detail"
+        project_id = st.session_state.selected_project_id
+        project_name = st.session_state.selected_project_name
+        
+        # Back button
+        st.button("← Back to Projects List", on_click=back_to_list)
+        
+        # Project header
+        st.header(f"Project: {project_name}")
+        
+        # Get project details
+        project_details = db.execute_query("""
+            SELECT p.description, p.start_date, p.end_date, p.assigned_to
+            FROM projects p
+            WHERE p.id = ?
+        """, (project_id,))[0]
+        
+        description, start_date, end_date, assigned_to = project_details
+        
+        # Format dates
+        start_date = start_date.split('T')[0] if 'T' in start_date else start_date
+        end_date = end_date.split('T')[0] if 'T' in end_date else end_date
+        
+        # Get assigned person name
+        assigned_name = member_dict.get(assigned_to, "Unassigned") if assigned_to else "Unassigned"
+        
+        # Display project details
+        st.markdown(f"**Timeline:** {start_date} to {end_date} | **Assigned to:** {assigned_name}")
+        st.markdown(f"**Description:** {description}")
+        
+        # Tabs for different sections
+        tab1, tab2, tab3 = st.tabs(["Tasks", "Sub-Projects", "Notes & Reminders"])
+        
+        # Tasks Tab
+        with tab1:
+            st.subheader("Project Tasks")
             
-            # Get assigned person name
-            assigned_name = member_dict.get(assigned_to, "Unassigned") if assigned_to else "Unassigned"
-            
-            # Project header with details
-            st.markdown(f"""
-            ## Project: {project_name}
-            **Timeline:** {start_date} to {end_date} | **Assigned to:** {assigned_name}
-            
-            {project_desc}
-            """)
-            
-            # Project tasks
-            project_tasks = db.execute_query("""
+            # Get tasks for this project
+            tasks = db.execute_query("""
                 SELECT t.id, t.name, t.description, t.jira_ticket, t.status, t.assigned_to
                 FROM tasks t
                 WHERE t.project_id = ? AND t.sub_project_id IS NULL
             """, (project_id,))
             
-            if project_tasks:
-                st.subheader("Tasks")
-                
+            if tasks:
                 # Convert to DataFrame for the editable table
-                tasks_df = pd.DataFrame(project_tasks, 
-                                       columns=["ID", "Name", "Description", "Jira Ticket", "Status", "Assigned To"])
+                tasks_df = pd.DataFrame(tasks, 
+                                      columns=["ID", "Name", "Description", "Jira Ticket", "Status", "Assigned To"])
                 
                 # Add assigned person name
                 tasks_df["Assigned To Name"] = tasks_df["Assigned To"].apply(
@@ -452,8 +478,12 @@ def app():
                         )
                         st.success(f"Added new task: {row['Name']}")
                         st.rerun()
+        
+        # Sub-Projects Tab
+        with tab2:
+            st.subheader("Sub-Projects")
             
-            # Sub-projects and their tasks
+            # Get sub-projects for this project
             sub_projects = db.execute_query("""
                 SELECT sp.id, sp.name, sp.description, sp.start_date, sp.end_date, sp.assigned_to
                 FROM sub_projects sp
@@ -461,8 +491,6 @@ def app():
             """, (project_id,))
             
             if sub_projects:
-                st.markdown("### Sub-Projects")
-                
                 for sub_id, sub_name, sub_desc, sub_start, sub_end, sub_assigned in sub_projects:
                     # Format dates
                     sub_start = sub_start.split('T')[0] if 'T' in sub_start else sub_start
@@ -659,7 +687,86 @@ def app():
                                     )
                                     st.success(f"Added new task: {row['Name']}")
                                     st.rerun()
+            else:
+                st.info(f"No sub-projects for {project_name} yet.")
+        
+        # Notes & Reminders Tab
+        with tab3:
+            # Get all tasks for this project (including sub-project tasks)
+            all_tasks = db.execute_query("""
+                SELECT t.id, t.name
+                FROM tasks t
+                WHERE t.project_id = ? OR t.sub_project_id IN (
+                    SELECT sp.id FROM sub_projects sp WHERE sp.project_id = ?
+                )
+            """, (project_id, project_id))
             
-            st.markdown("---")  # Separator between projects
-    else:
-        st.info("No projects added yet. Use the 'Add New Project' button to create a project.") 
+            if all_tasks:
+                task_ids = [t[0] for t in all_tasks]
+                task_names = {t[0]: t[1] for t in all_tasks}
+                
+                # Notes section
+                st.subheader("Notes")
+                
+                notes = db.execute_query("""
+                    SELECT n.id, n.task_id, n.note, n.created_at
+                    FROM notes n
+                    WHERE n.task_id IN ({})
+                    ORDER BY n.created_at DESC
+                """.format(','.join(['?'] * len(task_ids))), task_ids)
+                
+                if notes:
+                    for note_id, task_id, note_text, created_at in notes:
+                        # Format date
+                        created_at = created_at.split('T')[0] + " " + created_at.split('T')[1][:8] if 'T' in created_at else created_at
+                        
+                        with st.expander(f"Note for: {task_names[task_id]} ({created_at})", expanded=False):
+                            st.write(note_text)
+                            if st.button("Delete Note", key=f"del_note_{note_id}"):
+                                db.execute_query("DELETE FROM notes WHERE id = ?", (note_id,))
+                                st.success("Note deleted successfully!")
+                                st.rerun()
+                else:
+                    st.info("No notes for this project yet.")
+                
+                # Reminders section
+                st.subheader("Reminders")
+                
+                reminders = db.execute_query("""
+                    SELECT r.id, r.task_id, r.reminder_date, r.note, r.followed_up
+                    FROM reminders r
+                    WHERE r.task_id IN ({})
+                    ORDER BY r.reminder_date
+                """.format(','.join(['?'] * len(task_ids))), task_ids)
+                
+                if reminders:
+                    for reminder_id, task_id, reminder_date, reminder_note, followed_up in reminders:
+                        # Format date
+                        reminder_date = reminder_date.split('T')[0] if 'T' in reminder_date else reminder_date
+                        
+                        status = "✅ Followed up" if followed_up else "⏰ Pending"
+                        
+                        with st.expander(f"Reminder for: {task_names[task_id]} ({reminder_date}) - {status}", expanded=False):
+                            st.write(reminder_note)
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                if st.button("Delete Reminder", key=f"del_reminder_{reminder_id}"):
+                                    db.execute_query("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+                                    st.success("Reminder deleted successfully!")
+                                    st.rerun()
+                            with col2:
+                                if not followed_up:
+                                    if st.button("Mark as Followed Up", key=f"followup_{reminder_id}"):
+                                        db.execute_query("UPDATE reminders SET followed_up = 1 WHERE id = ?", (reminder_id,))
+                                        st.success("Reminder marked as followed up!")
+                                        st.rerun()
+                                else:
+                                    if st.button("Mark as Pending", key=f"pending_{reminder_id}"):
+                                        db.execute_query("UPDATE reminders SET followed_up = 0 WHERE id = ?", (reminder_id,))
+                                        st.success("Reminder marked as pending!")
+                                        st.rerun()
+                else:
+                    st.info("No reminders for this project yet.")
+            else:
+                st.info("No tasks in this project yet. Add tasks to create notes and reminders.") 
