@@ -292,7 +292,7 @@ def app():
         st.markdown(f"**Description:** {description}")
         
         # Tabs for different sections
-        tab1, tab2, tab3 = st.tabs(["Tasks", "Sub-Projects", "Notes & Reminders"])
+        tab1, tab2, tab3, tab4 = st.tabs(["Tasks", "Sub-Projects", "Notes & Reminders", "Activity Log"])
         
         # Tasks Tab
         with tab1:
@@ -352,11 +352,15 @@ def app():
                     task_name = row["Name"]
                     col1, col2 = st.columns(2)
                     with col1:
+                        with st.container(border=True):
+                            st.markdown(f"**{task_name}**")
+                            st.markdown(f"**{row['Description'][:100]}...**")
+                    with col2:
                         if st.button("📝 Add Note", key=f"note_btn_{task_id}", use_container_width=True):
                             open_note_modal(task_id, task_name)
-                    with col2:
                         if st.button("🔔 Add Reminder", key=f"reminder_btn_{task_id}", use_container_width=True):
                             open_reminder_modal(task_id, task_name)
+                    st.markdown("---")
                 
                 # Handle task deletions
                 for index, row in edited_tasks_df.iterrows():
@@ -814,4 +818,39 @@ def app():
                     else:
                         st.info("No reminders for this project yet.")
             else:
-                st.info("No tasks in this project yet. Add tasks to create notes and reminders.") 
+                st.info("No tasks in this project yet. Add tasks to create notes and reminders.")
+        
+        # Activity Log Tab
+        with tab4:
+            st.subheader("Activity Log")
+            
+            # Get activity logs for this project
+            activity_logs = db.get_project_activity_logs(project_id)
+            
+            if activity_logs:
+                # Create a container for scrollable activity log
+                log_container = st.container()
+                with log_container:
+                    for log_id, timestamp, action_type, entity_type, entity_id, entity_name, description in activity_logs:
+                        # Format timestamp
+                        timestamp = timestamp.split('T')[0] + " " + timestamp.split('T')[1][:8] if 'T' in timestamp else timestamp
+                        
+                        # Set icon based on action type
+                        icon = "✅" if action_type == "create" else "🔄" if action_type == "update" else "❌" if action_type == "delete" else "ℹ️"
+                        
+                        # Set color based on entity type
+                        color = "#e6f7ff" if entity_type == "project" else \
+                                "#fff2e6" if entity_type == "subproject" else \
+                                "#e6ffe6" if entity_type == "task" else \
+                                "#f7e6ff" if entity_type == "note" else \
+                                "#ffe6e6" if entity_type == "reminder" else "#f9f9f9"
+                        
+                        # Create a card-like display for each activity
+                        st.markdown(f"""
+                        <div style="border:1px solid #ddd; border-radius:5px; padding:10px; margin-bottom:10px; background-color:{color};">
+                            <p style="color:#555; font-size:0.8em;">{timestamp} | {icon} <b>{action_type.upper()}</b> {entity_type}: {entity_name}</p>
+                            <p>{description}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+            else:
+                st.info("No activity logs for this project yet.") 

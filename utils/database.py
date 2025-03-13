@@ -84,6 +84,20 @@ def init_db():
             FOREIGN KEY (task_id) REFERENCES tasks(id)
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS activity_logs (
+            id INTEGER PRIMARY KEY,
+            timestamp TEXT NOT NULL,
+            user_id INTEGER,
+            action_type TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id INTEGER,
+            entity_name TEXT,
+            description TEXT,
+            project_id INTEGER,
+            FOREIGN KEY (project_id) REFERENCES projects(id)
+        )
+    ''')
     conn.commit()
 
 # Helper Functions
@@ -113,4 +127,71 @@ def execute_query(query, params=None):
     else:
         c.execute(query)
     conn.commit()
-    return c.fetchall() 
+    return c.fetchall()
+
+# Add a function to log activities
+def log_activity(action_type, entity_type, entity_id, entity_name, description, project_id=None, user_id=None):
+    """
+    Log an activity in the system
+    
+    Parameters:
+    - action_type: 'create', 'update', 'delete'
+    - entity_type: 'project', 'subproject', 'task', 'note', 'reminder'
+    - entity_id: ID of the affected entity
+    - entity_name: Name of the affected entity
+    - description: Description of the activity
+    - project_id: ID of the project this activity belongs to (can be None)
+    - user_id: ID of the user who performed the action (can be None)
+    """
+    conn = sqlite3.connect('project_management.db')
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        """INSERT INTO activity_logs 
+           (timestamp, user_id, action_type, entity_type, entity_id, entity_name, description, project_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (datetime.now().isoformat(), user_id, action_type, entity_type, entity_id, entity_name, description, project_id)
+    )
+    
+    conn.commit()
+    conn.close()
+
+# Function to get activity logs for a project
+def get_project_activity_logs(project_id, limit=50):
+    """Get recent activity logs for a specific project"""
+    conn = sqlite3.connect('project_management.db')
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        """SELECT id, timestamp, action_type, entity_type, entity_id, entity_name, description
+           FROM activity_logs
+           WHERE project_id = ?
+           ORDER BY timestamp DESC
+           LIMIT ?""",
+        (project_id, limit)
+    )
+    
+    logs = cursor.fetchall()
+    conn.close()
+    
+    return logs
+
+# Function to get all recent activity logs
+def get_recent_activity_logs(limit=50):
+    """Get recent activity logs across all projects"""
+    conn = sqlite3.connect('project_management.db')
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        """SELECT a.id, a.timestamp, a.action_type, a.entity_type, a.entity_id, a.entity_name, a.description, p.name
+           FROM activity_logs a
+           LEFT JOIN projects p ON a.project_id = p.id
+           ORDER BY a.timestamp DESC
+           LIMIT ?""",
+        (limit,)
+    )
+    
+    logs = cursor.fetchall()
+    conn.close()
+    
+    return logs 

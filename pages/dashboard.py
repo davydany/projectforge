@@ -159,18 +159,36 @@ def app():
         st.info("No task data available yet.")
     
     # Recent Activity
-    st.subheader("Recent Activity")
+    st.header("Recent Activity")
     
-    recent_notes = db.execute_query("""
-        SELECT n.created_at, t.name, n.note
-        FROM notes n
-        JOIN tasks t ON n.task_id = t.id
-        ORDER BY n.created_at DESC
-        LIMIT 5
-    """)
+    # Get recent activity logs
+    activity_logs = db.get_recent_activity_logs(limit=10)
     
-    if recent_notes:
-        for note in recent_notes:
-            st.write(f"**{note[0]}** - Note added to task '{note[1]}': {note[2]}")
+    if activity_logs:
+        # Create a container for scrollable activity log
+        log_container = st.container()
+        with log_container:
+            for log_id, timestamp, action_type, entity_type, entity_id, entity_name, description, project_name in activity_logs:
+                # Format timestamp
+                timestamp = timestamp.split('T')[0] + " " + timestamp.split('T')[1][:8] if 'T' in timestamp else timestamp
+                
+                # Set icon based on action type
+                icon = "✅" if action_type == "create" else "🔄" if action_type == "update" else "❌" if action_type == "delete" else "ℹ️"
+                
+                # Set color based on entity type
+                color = "#e6f7ff" if entity_type == "project" else \
+                        "#fff2e6" if entity_type == "subproject" else \
+                        "#e6ffe6" if entity_type == "task" else \
+                        "#f7e6ff" if entity_type == "note" else \
+                        "#ffe6e6" if entity_type == "reminder" else "#f9f9f9"
+                
+                # Create a card-like display for each activity
+                st.markdown(f"""
+                <div style="border:1px solid #ddd; border-radius:5px; padding:10px; margin-bottom:10px; background-color:{color};">
+                    <p style="color:#555; font-size:0.8em;">{timestamp} | {icon} <b>{action_type.upper()}</b> {entity_type}: {entity_name}</p>
+                    <p>{description}</p>
+                    <p style="color:#888; font-size:0.8em;">Project: {project_name}</p>
+                </div>
+                """, unsafe_allow_html=True)
     else:
-        st.info("No recent activity.") 
+        st.info("No recent activity logs yet.") 
