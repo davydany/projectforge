@@ -170,7 +170,7 @@ def app():
 
     @st.dialog("Add Project")
     def add_project_dialog():
-         with st.form(key="add_project_form"):
+        with st.form(key="add_project_form"):
             st.subheader("Add New Project")
             name = st.text_input("Project Name")
             description = st.text_area("Description")
@@ -188,40 +188,39 @@ def app():
                     assigned_to = next((id for id, name in members if name == member_name), None)
             
             submit_button = st.form_submit_button("Add Project", help="Click to add a new project")
-            if submit_button:  # Ensure name is not empty
-
-                print(f"Name: {name}")
-
+            if submit_button:
                 if name:
-                    print("Adding project...")
-                    # Insert the project
-                    db.execute_query(
-                        """INSERT INTO projects 
-                        (name, description, start_date, end_date, assigned_to) 
-                        VALUES (?, ?, ?, ?, ?)""",
-                        (name, description, start_date.isoformat(), end_date.isoformat(), assigned_to)
-                    )
-                    
-                    # Get the new project ID
-                    project_id = db.execute_query("SELECT last_insert_rowid()", fetch_last_id=True)
-                    
-                    # Log the activity
-                    db.log_activity(
-                        action_type="create",
-                        entity_type="project",
-                        entity_id=project_id,
-                        entity_name=name,
-                        description=f"Created new project: {name}",
-                        project_id=project_id
-                    )
-                    
-                    st.success(f"Project '{name}' added successfully!")
-                    st.rerun()
-
+                    try:
+                        # Create a Project model
+                        from utils.models import Project
+                        
+                        project = Project(
+                            name=name,
+                            description=description,
+                            start_date=start_date,
+                            end_date=end_date,
+                            assigned_to=assigned_to
+                        )
+                        
+                        # Validate and save the project
+                        project_id = db.create_model(project)
+                        
+                        # Log the activity
+                        db.log_activity(
+                            action_type="create",
+                            entity_type="project",
+                            entity_id=project_id,
+                            entity_name=name,
+                            description=f"Created new project: {name}",
+                            project_id=project_id
+                        )
+                        
+                        st.success(f"Project '{name}' added successfully!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error creating project: {str(e)}")
                 else:
-                    print("No project name provided.")
                     st.warning("Please add a project name.")
-                    st.form_submit_button("Add Project", disabled=True)
     
     # Get team members for dropdown
     members = db.get_team_members()

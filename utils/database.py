@@ -2,6 +2,12 @@ import sqlite3
 from datetime import datetime
 import os
 import streamlit as st
+from typing import List, Dict, Any, Optional, Union, TypeVar, Type
+from utils.models import Project, SubProject, Task, Team, TeamMember, Note, Reminder
+
+# Type variable for generic model functions
+T = TypeVar('T', Project, SubProject, Task, Team, TeamMember, Note, Reminder)
+
 # Ensure data directory exists
 os.makedirs('data', exist_ok=True)
 
@@ -117,7 +123,157 @@ def init_db():
     conn.commit()
     # conn.close()
 
-# Helper Functions
+# Generic CRUD operations for models
+def create_model(model: T) -> int:
+    """Create a new record in the database from a model"""
+    model_dict = model.to_dict()
+    
+    # Remove ID from the dictionary if it's None
+    if model_dict.get('id') is None:
+        del model_dict['id']
+    
+    # Get the table name from the model class name
+    table_name = model.__class__.__name__.lower() + 's'
+    if table_name == 'teams':
+        table_name = 'teams'  # Special case for team (already plural)
+    
+    # Build the SQL query
+    columns = ', '.join(model_dict.keys())
+    placeholders = ', '.join(['?'] * len(model_dict))
+    values = tuple(model_dict.values())
+    
+    query = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
+    
+    # Execute the query
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(query, values)
+    
+    # Get the ID of the new record
+    cursor.execute("SELECT last_insert_rowid()")
+    new_id = cursor.fetchone()[0]
+    
+    conn.commit()
+    conn.close()
+    
+    return new_id
+
+def get_model_by_id(model_class: Type[T], id: int) -> Optional[T]:
+    """Get a model by ID"""
+    # Get the table name from the model class name
+    table_name = model_class.__name__.lower() + 's'
+    if table_name == 'teams':
+        table_name = 'teams'  # Special case for team (already plural)
+    
+    query = f"SELECT * FROM {table_name} WHERE id = ?"
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(query, (id,))
+    
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row:
+        return None
+    
+    # Get column names
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = [info[1] for info in cursor.fetchall()]
+    conn.close()
+    
+    # Create a dictionary from the row
+    data = {columns[i]: row[i] for i in range(len(columns))}
+    
+    # Create and return the model
+    return model_class.from_dict(data)
+
+def update_model(model: T) -> bool:
+    """Update a model in the database"""
+    if model.id is None:
+        raise ValueError("Model must have an ID to be updated")
+    
+    model_dict = model.to_dict()
+    
+    # Get the table name from the model class name
+    table_name = model.__class__.__name__.lower() + 's'
+    if table_name == 'teams':
+        table_name = 'teams'  # Special case for team (already plural)
+    
+    # Build the SQL query
+    set_clause = ', '.join([f"{key} = ?" for key in model_dict.keys() if key != 'id'])
+    values = tuple(value for key, value in model_dict.items() if key != 'id')
+    values += (model.id,)  # Add ID for WHERE clause
+    
+    query = f"UPDATE {table_name} SET {set_clause} WHERE id = ?"
+    
+    # Execute the query
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(query, values)
+    
+    # Check if the update was successful
+    success = cursor.rowcount > 0
+    
+    conn.commit()
+    conn.close()
+    
+    return success
+
+def delete_model(model_class: Type[T], id: int) -> bool:
+    """Delete a model from the database by ID"""
+    # Get the table name from the model class name
+    table_name = model_class.__name__.lower() + 's'
+    if table_name == 'teams':
+        table_name = 'teams'  # Special case for team (already plural)
+    
+    query = f"DELETE FROM {table_name} WHERE id = ?"
+    
+    # Execute the query
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(query, (id,))
+    
+    # Check if the delete was successful
+    success = cursor.rowcount > 0
+    
+    conn.commit()
+    conn.close()
+    
+    return success
+
+def get_all_models(model_class: Type[T]) -> List[T]:
+    """Get all models of a specific type"""
+    # Get the table name from the model class name
+    table_name = model_class.__name__.lower() + 's'
+    if table_name == 'teams':
+        table_name = 'teams'  # Special case for team (already plural)
+    
+    query = f"SELECT * FROM {table_name}"
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(query)
+    
+    rows = cursor.fetchall()
+    
+    # Get column names
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = [info[1] for info in cursor.fetchall()]
+    
+    conn.close()
+    
+    # Create models from rows
+    models = []
+    for row in rows:
+        data = {columns[i]: row[i] for i in range(len(columns))}
+        models.append(model_class.from_dict(data))
+    
+    return models
+
+# Keep the existing helper functions for backward compatibility
 def get_teams():
     c.execute("SELECT id, name FROM teams")
     return c.fetchall()
