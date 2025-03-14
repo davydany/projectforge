@@ -10,6 +10,7 @@ import pages.reminders
 import pages.dashboard
 import pages.teams_members
 import pages.projects_tasks
+import pages.connections
 import utils.database as db
 
 # Initialize the database
@@ -33,6 +34,7 @@ pages = {
     "Projects & Tasks": pages.projects_tasks,
     "Notes": pages.notes,
     "Reminders": pages.reminders,
+    "Manage Connections": pages.connections
 }
 
 selection = st.sidebar.radio("Navigate to", list(pages.keys()))

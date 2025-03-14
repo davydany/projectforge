@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime
 import os
-
+import streamlit as st
 # Ensure data directory exists
 os.makedirs('data', exist_ok=True)
 
@@ -105,6 +105,15 @@ def init_db():
             FOREIGN KEY (project_id) REFERENCES projects(id)
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS connections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            settings TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     conn.commit()
     # conn.close()
 
@@ -162,6 +171,8 @@ def log_activity(action_type, entity_type, entity_id, entity_name, description, 
     - project_id: ID of the project this activity belongs to (can be None)
     - user_id: ID of the user who performed the action (can be None)
     """
+    st.info(f"Logging activity: {action_type} for {entity_type} with ID {entity_id}")
+    print(f"Logging activity: {action_type} for {entity_type} with ID {entity_id}")
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     

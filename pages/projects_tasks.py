@@ -71,6 +71,157 @@ def app():
     
     def close_modals():
         st.rerun()
+
+    @st.dialog("Add Sub-Project")
+    def add_subproject_dialog():
+        with st.form(key="add_subproject_form"):
+            st.subheader("Add New Sub-Project")
+            
+            # Get projects for parent selection
+            projects = db.get_projects()
+            if projects:
+                project_options = [name for _, name in projects]
+                parent_project = st.selectbox("Parent Project", project_options)
+                project_id = next((id for id, name in projects if name == parent_project), None)
+                
+                name = st.text_input("Sub-Project Name")
+                description = st.text_area("Description")
+                start_date = st.date_input("Start Date")
+                end_date = st.date_input("End Date")
+                
+                assign_to_member = st.checkbox("Assign to team member", value=False)
+                assigned_to = None
+                
+                if assign_to_member and members:
+                    member_name = st.selectbox("Assign To", member_options)
+                    if member_name != "Unassigned":
+                        assigned_to = next((id for id, name in member_dict.items() if name == member_name), None)
+                
+                submit_button = st.form_submit_button("Add Sub-Project")
+                if submit_button and name:  # Ensure name is not empty
+                    db.execute_query(
+                        """INSERT INTO sub_projects 
+                            (project_id, name, description, start_date, end_date, assigned_to) 
+                            VALUES (?, ?, ?, ?, ?, ?)""",
+                        (project_id, name, description, start_date.isoformat(), end_date.isoformat(), assigned_to)
+                    )
+                    st.success("Sub-Project added successfully!")
+                    st.rerun()
+            else:
+                st.warning("Please add a project first before adding sub-projects.")
+                st.form_submit_button("Add Sub-Project", disabled=True)
+
+    @st.dialog("Add Task")
+    def add_task_dialog():
+        with st.form(key="add_task_form"):
+            st.subheader("Add New Task")
+            
+            task_type = st.radio("Task Type", ["Project Task", "Sub-Project Task"])
+            
+            if task_type == "Project Task":
+                projects = db.get_projects()
+                if projects:
+                    project_options = [name for _, name in projects]
+                    parent = st.selectbox("Select Project", project_options)
+                    project_id = next((id for id, name in projects if name == parent), None)
+                    sub_project_id = None
+                else:
+                    st.warning("Please add a project first.")
+                    st.form_submit_button("Add Task", disabled=True)
+                    return
+            else:
+                sub_projects = db.get_sub_projects()
+                if sub_projects:
+                    subproj_options = [name for _, name in sub_projects]
+                    parent = st.selectbox("Select Sub-Project", subproj_options)
+                    sub_project_id = next((id for id, name in sub_projects if name == parent), None)
+                    project_id = None
+                else:
+                    st.warning("Please add a sub-project first.")
+                    st.form_submit_button("Add Task", disabled=True)
+                return
+            
+            name = st.text_input("Task Name")
+            description = st.text_area("Description")
+            jira_ticket = st.text_input("Jira Ticket (optional)")
+            status = st.selectbox("Status", ["not started", "started", "blocked", "waiting", "in progress", "completed"])
+            
+            if members:
+                member_name = st.selectbox("Assign To", member_options)
+                if member_name != "Unassigned":
+                    assigned_to = next((id for id, name in member_dict.items() if name == member_name), None)
+                else:
+                    assigned_to = None
+                
+                submit_button = st.form_submit_button("Add Task")
+                if submit_button and name:  # Ensure name is not empty
+                    db.execute_query(
+                        """INSERT INTO tasks 
+                            (project_id, sub_project_id, name, description, jira_ticket, status, assigned_to)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (project_id, sub_project_id, name, description, jira_ticket, status, assigned_to)
+                    )
+                    st.success("Task added successfully!")
+                    st.rerun()
+            else:
+                st.warning("Please add team members first.")
+                st.form_submit_button("Add Task", disabled=True)
+            
+
+    @st.dialog("Add Project")
+    def add_project_dialog():
+         with st.form(key="add_project_form"):
+            st.subheader("Add New Project")
+            name = st.text_input("Project Name")
+            description = st.text_area("Description")
+            start_date = st.date_input("Start Date")
+            end_date = st.date_input("End Date")
+            
+            assign_to_member = st.checkbox("Assign to team member", value=False)
+            assigned_to = None
+            
+            print(f"Number of members: {len(members)}")
+            print(f"Show 'Assign to team member' checkbox: {assign_to_member and members}")
+            if assign_to_member and members:
+                member_name = st.selectbox("Assign To", member_options)
+                if member_name != "Unassigned":
+                    assigned_to = next((id for id, name in members if name == member_name), None)
+            
+            submit_button = st.form_submit_button("Add Project", help="Click to add a new project")
+            if submit_button:  # Ensure name is not empty
+
+                print(f"Name: {name}")
+
+                if name:
+                    print("Adding project...")
+                    # Insert the project
+                    db.execute_query(
+                        """INSERT INTO projects 
+                        (name, description, start_date, end_date, assigned_to) 
+                        VALUES (?, ?, ?, ?, ?)""",
+                        (name, description, start_date.isoformat(), end_date.isoformat(), assigned_to)
+                    )
+                    
+                    # Get the new project ID
+                    project_id = db.execute_query("SELECT last_insert_rowid()", fetch_last_id=True)
+                    
+                    # Log the activity
+                    db.log_activity(
+                        action_type="create",
+                        entity_type="project",
+                        entity_id=project_id,
+                        entity_name=name,
+                        description=f"Created new project: {name}",
+                        project_id=project_id
+                    )
+                    
+                    st.success(f"Project '{name}' added successfully!")
+                    st.rerun()
+
+                else:
+                    print("No project name provided.")
+                    st.warning("Please add a project name.")
+                    st.form_submit_button("Add Project", disabled=True)
     
     # Get team members for dropdown
     members = db.get_team_members()
@@ -90,126 +241,16 @@ def app():
         
         # Add Project Dialog
         if add_project_button:
-            with st.form(key="add_project_form"):
-                st.subheader("Add New Project")
-                name = st.text_input("Project Name")
-                description = st.text_area("Description")
-                start_date = st.date_input("Start Date")
-                end_date = st.date_input("End Date")
-                
-                assign_to_member = st.checkbox("Assign to team member", value=False)
-                assigned_to = None
-                
-                if assign_to_member and members:
-                    member_name = st.selectbox("Assign To", member_options)
-                    if member_name != "Unassigned":
-                        assigned_to = next((id for id, name in member_dict.items() if name == member_name), None)
-                
-                submit_button = st.form_submit_button("Add Project")
-                if submit_button and name:  # Ensure name is not empty
-                    db.execute_query(
-                        """INSERT INTO projects 
-                           (name, description, start_date, end_date, assigned_to) 
-                           VALUES (?, ?, ?, ?, ?)""",
-                        (name, description, start_date.isoformat(), end_date.isoformat(), assigned_to)
-                    )
-                    st.success("Project added successfully!")
-                    st.rerun()
+           add_project_dialog()
+
         
         # Add Sub-Project Dialog
         if add_subproject_button:
-            with st.form(key="add_subproject_form"):
-                st.subheader("Add New Sub-Project")
-                
-                # Get projects for parent selection
-                projects = db.get_projects()
-                if projects:
-                    project_options = [name for _, name in projects]
-                    parent_project = st.selectbox("Parent Project", project_options)
-                    project_id = next((id for id, name in projects if name == parent_project), None)
-                    
-                    name = st.text_input("Sub-Project Name")
-                    description = st.text_area("Description")
-                    start_date = st.date_input("Start Date")
-                    end_date = st.date_input("End Date")
-                    
-                    assign_to_member = st.checkbox("Assign to team member", value=False)
-                    assigned_to = None
-                    
-                    if assign_to_member and members:
-                        member_name = st.selectbox("Assign To", member_options)
-                        if member_name != "Unassigned":
-                            assigned_to = next((id for id, name in member_dict.items() if name == member_name), None)
-                    
-                    submit_button = st.form_submit_button("Add Sub-Project")
-                    if submit_button and name:  # Ensure name is not empty
-                        db.execute_query(
-                            """INSERT INTO sub_projects 
-                               (project_id, name, description, start_date, end_date, assigned_to) 
-                               VALUES (?, ?, ?, ?, ?, ?)""",
-                            (project_id, name, description, start_date.isoformat(), end_date.isoformat(), assigned_to)
-                        )
-                        st.success("Sub-Project added successfully!")
-                        st.rerun()
-                else:
-                    st.warning("Please add a project first before adding sub-projects.")
-                    st.form_submit_button("Add Sub-Project", disabled=True)
+            add_subproject_dialog()
         
         # Add Task Dialog
         if add_task_button:
-            with st.form(key="add_task_form"):
-                st.subheader("Add New Task")
-                
-                task_type = st.radio("Task Type", ["Project Task", "Sub-Project Task"])
-                
-                if task_type == "Project Task":
-                    projects = db.get_projects()
-                    if projects:
-                        project_options = [name for _, name in projects]
-                        parent = st.selectbox("Select Project", project_options)
-                        project_id = next((id for id, name in projects if name == parent), None)
-                        sub_project_id = None
-                    else:
-                        st.warning("Please add a project first.")
-                        st.form_submit_button("Add Task", disabled=True)
-                        return
-                else:
-                    sub_projects = db.get_sub_projects()
-                    if sub_projects:
-                        subproj_options = [name for _, name in sub_projects]
-                        parent = st.selectbox("Select Sub-Project", subproj_options)
-                        sub_project_id = next((id for id, name in sub_projects if name == parent), None)
-                        project_id = None
-                    else:
-                        st.warning("Please add a sub-project first.")
-                        st.form_submit_button("Add Task", disabled=True)
-                    return
-                
-                name = st.text_input("Task Name")
-                description = st.text_area("Description")
-                jira_ticket = st.text_input("Jira Ticket (optional)")
-                status = st.selectbox("Status", ["not started", "started", "blocked", "waiting", "in progress", "completed"])
-                
-                if members:
-                    member_name = st.selectbox("Assign To", member_options)
-                    if member_name != "Unassigned":
-                        assigned_to = next((id for id, name in member_dict.items() if name == member_name), None)
-                    else:
-                        assigned_to = None
-                    
-                    submit_button = st.form_submit_button("Add Task")
-                    if submit_button and name:  # Ensure name is not empty
-                        db.execute_query(
-                            """INSERT INTO tasks 
-                               (project_id, sub_project_id, name, description, jira_ticket, status, assigned_to)
-                               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                            (project_id, sub_project_id, name, description, jira_ticket, status, assigned_to)
-                        )
-                        st.success("Task added successfully!")
-                        st.rerun()
-                else:
-                    st.warning("Please add team members first.")
-                    st.form_submit_button("Add Task", disabled=True)
+            add_task_dialog()
         
         # Display projects list
         st.subheader("Projects")
